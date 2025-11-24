@@ -12,6 +12,7 @@ import { LanguageProvider } from './utils/i18n';
 const AppContent: React.FC = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   if (!isLoggedIn) {
     return <LandingPage onLogin={() => setIsLoggedIn(true)} />;
@@ -42,8 +43,10 @@ const AppContent: React.FC = () => {
         activeTab={activeTab} 
         setActiveTab={setActiveTab} 
         onLogout={() => setIsLoggedIn(false)}
+        isCollapsed={isSidebarCollapsed}
+        toggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
       />
-      <main className="ml-64 flex-1 p-8 h-screen overflow-y-auto">
+      <main className={`transition-all duration-300 ${isSidebarCollapsed ? 'ml-20' : 'ml-64'} flex-1 p-8 h-screen overflow-y-auto`}>
         {renderContent()}
       </main>
     </div>
