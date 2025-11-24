@@ -1,18 +1,23 @@
 import React, { useState } from 'react';
 import { User, CreditCard, Edit2, Save, History, Plus, Mail, Send, FileText, CheckCircle, AlertTriangle, Camera, Trash2, Star, X } from 'lucide-react';
 import { useLanguage } from '../utils/i18n';
+import { UserProfile } from '../types';
 
-export const AccountPage: React.FC = () => {
+interface AccountPageProps {
+  userProfile: UserProfile;
+  onUpdateProfile: (profile: UserProfile) => void;
+}
+
+export const AccountPage: React.FC<AccountPageProps> = ({ userProfile, onUpdateProfile }) => {
   const { t, language } = useLanguage();
   const [isEditing, setIsEditing] = useState(false);
-  const [profile, setProfile] = useState({
-    name: 'Jean Solopreneur',
-    email: 'jean@example.com'
+  const [tempProfile, setTempProfile] = useState({
+    name: userProfile.name,
+    email: userProfile.email
   });
-  const [tempProfile, setTempProfile] = useState(profile);
-  const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [tempAvatar, setTempAvatar] = useState<string | null>(userProfile.avatar);
   
-  const [selectedPlan, setSelectedPlan] = useState('pro');
+  const [selectedPlan, setSelectedPlan] = useState(userProfile.plan === 'Starter' ? 'starter' : 'pro');
   const [pendingPlan, setPendingPlan] = useState<string | null>(null);
   const [showPlanModal, setShowPlanModal] = useState(false);
 
@@ -34,12 +39,18 @@ export const AccountPage: React.FC = () => {
   const [paymentForm, setPaymentForm] = useState({ brand: 'Visa', number: '', expiry: '', cvc: '' });
 
   const handleEdit = () => {
-    setTempProfile(profile);
+    setTempProfile({ name: userProfile.name, email: userProfile.email });
+    setTempAvatar(userProfile.avatar);
     setIsEditing(true);
   };
 
   const handleSave = () => {
-    setProfile(tempProfile);
+    onUpdateProfile({
+      ...userProfile,
+      name: tempProfile.name,
+      email: tempProfile.email,
+      avatar: tempAvatar
+    });
     setIsEditing(false);
   };
 
@@ -47,7 +58,7 @@ export const AccountPage: React.FC = () => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
       const imageUrl = URL.createObjectURL(file);
-      setProfileImage(imageUrl);
+      setTempAvatar(imageUrl);
     }
   };
 
@@ -60,6 +71,10 @@ export const AccountPage: React.FC = () => {
   const confirmPlanChange = () => {
     if (pendingPlan) {
       setSelectedPlan(pendingPlan);
+      onUpdateProfile({
+        ...userProfile,
+        plan: pendingPlan === 'pro' ? 'Pro Plan' : 'Starter Plan'
+      });
       setShowPlanModal(false);
       setPendingPlan(null);
     }
@@ -76,7 +91,7 @@ export const AccountPage: React.FC = () => {
   const handleDeletePayment = (id: string) => {
     const methodToDelete = paymentMethods.find(pm => pm.id === id);
     if (methodToDelete?.isDefault) {
-      alert("Impossible de supprimer le moyen de paiement par défaut. Veuillez en définir un autre par défaut avant de supprimer celui-ci.");
+      alert("Impossible de supprimer le moyen de paiement par défaut.");
       return;
     }
     if (confirm("Êtes-vous sûr de vouloir supprimer ce moyen de paiement ?")) {
@@ -102,7 +117,7 @@ export const AccountPage: React.FC = () => {
       // Edit existing
       setPaymentMethods(paymentMethods.map(pm => 
         pm.id === editingPaymentId 
-          ? { ...pm, expiry: paymentForm.expiry } // Only update expiry for demo
+          ? { ...pm, expiry: paymentForm.expiry } 
           : pm
       ));
     } else {
@@ -114,7 +129,7 @@ export const AccountPage: React.FC = () => {
         brand: paymentForm.brand,
         last4: last4,
         expiry: paymentForm.expiry,
-        isDefault: paymentMethods.length === 0 // Make default if it's the first one
+        isDefault: paymentMethods.length === 0 
       };
       setPaymentMethods([...paymentMethods, newMethod]);
     }
@@ -122,25 +137,25 @@ export const AccountPage: React.FC = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 fade-in pb-12 relative">
+    <div className="max-w-5xl mx-auto space-y-8 fade-in pb-12 relative">
       <header>
-        <h2 className="text-2xl font-bold text-slate-900">{t('acc.title')}</h2>
+        <h2 className="text-3xl font-bold text-slate-900 tracking-tight">{t('acc.title')}</h2>
       </header>
 
       {/* Profile Section */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-8">
-        <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8">
+        <div className="flex flex-col md:flex-row items-start md:items-center gap-8">
           <div className="relative group">
-            <div className="w-20 h-20 bg-slate-200 rounded-full flex items-center justify-center text-slate-500 shrink-0 overflow-hidden border-2 border-white shadow-sm">
-              {profileImage ? (
-                <img src={profileImage} alt="Profile" className="w-full h-full object-cover" />
+            <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 shrink-0 overflow-hidden border-4 border-white shadow-lg">
+              {isEditing ? (
+                 tempAvatar ? <img src={tempAvatar} alt="Profile" className="w-full h-full object-cover" /> : <User size={40} />
               ) : (
-                <User size={40} />
+                 userProfile.avatar ? <img src={userProfile.avatar} alt="Profile" className="w-full h-full object-cover" /> : <User size={40} />
               )}
             </div>
             {isEditing && (
-              <label className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
-                <Camera size={20} />
+              <label className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity z-10 backdrop-blur-sm">
+                <Camera size={24} />
                 <input 
                   type="file" 
                   className="hidden" 
@@ -152,55 +167,67 @@ export const AccountPage: React.FC = () => {
           </div>
           
           <div className="flex-1 w-full">
-            <div className="flex justify-between items-start mb-4">
+            <div className="flex justify-between items-start mb-6">
               <div>
-                <span className="inline-block px-3 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full mb-2">
-                  Active
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-full mb-2 border border-emerald-100">
+                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                  Compte Actif
                 </span>
               </div>
               {!isEditing ? (
                 <button 
                   onClick={handleEdit}
-                  className="text-indigo-600 hover:text-indigo-800 flex items-center gap-1 text-sm font-medium"
+                  className="text-primary hover:text-blue-700 flex items-center gap-2 text-sm font-bold bg-primary/5 px-4 py-2 rounded-lg hover:bg-primary/10 transition"
                 >
-                  <Edit2 size={16} /> Edit Profile
+                  <Edit2 size={16} /> Modifier
                 </button>
               ) : (
-                <button 
-                  onClick={handleSave}
-                  className="bg-indigo-600 text-white px-4 py-1.5 rounded-lg hover:bg-indigo-700 flex items-center gap-2 text-sm font-medium transition"
-                >
-                  <Save size={16} /> Save Changes
-                </button>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => {
+                       setIsEditing(false);
+                       setTempAvatar(userProfile.avatar); 
+                    }}
+                    className="text-slate-500 hover:text-slate-700 text-sm font-bold px-4 py-2"
+                  >
+                    Annuler
+                  </button>
+                  <button 
+                    onClick={handleSave}
+                    className="bg-primary text-white px-5 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2 text-sm font-bold transition shadow-lg shadow-blue-200"
+                  >
+                    <Save size={16} /> Enregistrer
+                  </button>
+                </div>
               )}
             </div>
 
             <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">Full Name</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Nom Complet</label>
                   {isEditing ? (
                     <input
                       type="text"
                       value={tempProfile.name}
                       onChange={(e) => setTempProfile({ ...tempProfile, name: e.target.value })}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary outline-none transition"
                     />
                   ) : (
-                    <h3 className="text-lg font-bold text-slate-900">{profile.name}</h3>
+                    <h3 className="text-xl font-bold text-slate-900">{userProfile.name}</h3>
                   )}
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">Email Address</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Adresse Email</label>
                   {isEditing ? (
                     <input
                       type="email"
                       value={tempProfile.email}
                       onChange={(e) => setTempProfile({ ...tempProfile, email: e.target.value })}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary outline-none transition"
                     />
                   ) : (
-                    <p className="text-slate-500">{profile.email}</p>
+                    <p className="text-lg text-slate-600">{userProfile.email}</p>
                   )}
                 </div>
               </div>
@@ -212,118 +239,122 @@ export const AccountPage: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         
         {/* Subscription Section */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-          <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col">
+          <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
             <h3 className="font-bold text-slate-900 flex items-center gap-2">
-              <CreditCard size={18} /> {t('acc.plan')}
+              <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+                 <CreditCard size={18} />
+              </div>
+              {t('acc.plan')}
             </h3>
-            <span className="text-xs font-medium px-2 py-1 bg-indigo-100 text-indigo-700 rounded">Mensuel</span>
+            <span className="text-xs font-bold px-3 py-1 bg-white border border-slate-200 text-slate-600 rounded-full">Mensuel</span>
           </div>
-          <div className="p-6 space-y-6">
+          <div className="p-8 space-y-6 flex-1">
             <div className="flex gap-4">
               <button 
                 onClick={() => initiatePlanChange('starter')}
-                className={`flex-1 p-4 rounded-lg border-2 text-left transition ${
-                  selectedPlan === 'starter' ? 'border-indigo-600 bg-indigo-50' : 'border-slate-100 hover:border-slate-300'
+                className={`flex-1 p-5 rounded-2xl border-2 text-left transition relative ${
+                  selectedPlan === 'starter' ? 'border-primary bg-primary/5' : 'border-slate-100 hover:border-slate-300'
                 }`}
               >
-                <div className="text-sm font-semibold text-slate-900">Starter</div>
-                <div className="text-2xl font-bold text-slate-900 mt-1">0€</div>
-                <div className="text-xs text-slate-500 mt-1">Manual only</div>
+                <div className="text-sm font-bold text-slate-500 uppercase tracking-wide mb-2">Starter</div>
+                <div className="text-3xl font-bold text-slate-900">0€</div>
+                <div className="text-xs text-slate-500 mt-2 font-medium">Manuel uniquement</div>
               </button>
               <button 
                 onClick={() => initiatePlanChange('pro')}
-                className={`flex-1 p-4 rounded-lg border-2 text-left transition ${
-                  selectedPlan === 'pro' ? 'border-indigo-600 bg-indigo-50' : 'border-slate-100 hover:border-slate-300'
+                className={`flex-1 p-5 rounded-2xl border-2 text-left transition relative overflow-hidden ${
+                  selectedPlan === 'pro' ? 'border-primary bg-primary/5' : 'border-slate-100 hover:border-slate-300'
                 }`}
               >
-                <div className="flex justify-between items-start">
-                  <div className="text-sm font-semibold text-slate-900">Pro</div>
-                  <div className="w-2 h-2 rounded-full bg-indigo-600"></div>
-                </div>
-                <div className="text-2xl font-bold text-indigo-600 mt-1">29€</div>
-                <div className="text-xs text-slate-500 mt-1">Full Auto + AI</div>
+                 {selectedPlan === 'pro' && <div className="absolute top-0 right-0 px-3 py-1 bg-primary text-white text-[10px] font-bold rounded-bl-xl">ACTIF</div>}
+                <div className="text-sm font-bold text-primary uppercase tracking-wide mb-2">Pro</div>
+                <div className="text-3xl font-bold text-slate-900">29€</div>
+                <div className="text-xs text-slate-500 mt-2 font-medium">100% Automatisé</div>
               </button>
             </div>
             
-            <div>
-               <h4 className="text-sm font-medium text-slate-700 mb-3">Historique Facturation</h4>
-               <div className="space-y-2">
-                 {[1, 2].map((i) => (
-                   <div key={i} className="flex justify-between items-center p-3 bg-slate-50 rounded text-sm">
-                     <div className="flex items-center gap-2">
-                       <FileText size={14} className="text-slate-400" />
-                       <span>01 Mar 2024</span>
-                     </div>
-                     <span className="font-medium">29.00 €</span>
-                     <button className="text-indigo-600 hover:underline text-xs">PDF</button>
+            <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+               <h4 className="text-xs font-bold text-slate-500 uppercase mb-3">Dernière Facture</h4>
+               <div className="flex justify-between items-center text-sm">
+                 <div className="flex items-center gap-3">
+                   <div className="p-2 bg-white rounded border border-slate-200 text-slate-400">
+                     <FileText size={16} />
                    </div>
-                 ))}
+                   <div className="font-medium text-slate-900">Mars 2024</div>
+                 </div>
+                 <div className="flex items-center gap-4">
+                    <span className="font-bold">29.00 €</span>
+                    <button className="text-primary hover:underline text-xs font-bold">PDF</button>
+                 </div>
                </div>
             </div>
           </div>
         </div>
 
         {/* Payment Methods */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-           <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col">
+           <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
             <h3 className="font-bold text-slate-900 flex items-center gap-2">
-              <CreditCard size={18} /> Moyens de Paiement
+              <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+                <CreditCard size={18} />
+              </div>
+              Paiement
             </h3>
             <button 
               onClick={openAddPaymentModal}
-              className="text-indigo-600 hover:bg-indigo-50 p-1.5 rounded-full transition"
+              className="text-primary hover:bg-blue-50 p-2 rounded-lg transition"
             >
-              <Plus size={18} />
+              <Plus size={20} />
             </button>
           </div>
-          <div className="p-6">
-            <div className="space-y-3">
+          <div className="p-8 flex-1">
+            <div className="space-y-4">
               {paymentMethods.map((pm) => (
-                <div key={pm.id} className="flex items-center justify-between p-4 border border-slate-200 rounded-lg hover:border-indigo-300 transition group">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-6 bg-slate-800 rounded text-white text-[10px] flex items-center justify-center font-bold tracking-wider">
+                <div key={pm.id} className="flex items-center justify-between p-5 border border-slate-100 rounded-2xl hover:border-primary/30 transition group bg-white shadow-sm hover:shadow-md">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-8 bg-slate-800 rounded-md text-white text-[10px] flex items-center justify-center font-bold tracking-widest shadow-md">
                       {pm.brand.toUpperCase()}
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-slate-900">•••• •••• •••• {pm.last4}</p>
-                      <p className="text-xs text-slate-500">Expire {pm.expiry}</p>
+                      <p className="text-sm font-bold text-slate-900">•••• {pm.last4}</p>
+                      <p className="text-xs text-slate-500 font-medium">Expire {pm.expiry}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
                     {pm.isDefault ? (
-                      <span className="px-2 py-1 bg-indigo-100 text-indigo-700 text-xs rounded font-medium">Défaut</span>
+                      <span className="px-2 py-1 bg-primary/10 text-primary text-[10px] font-bold uppercase rounded tracking-wide mr-2">Défaut</span>
                     ) : (
                       <button 
                         onClick={() => handleSetDefaultPayment(pm.id)}
-                        className="p-1.5 text-slate-300 hover:text-amber-500 hover:bg-amber-50 rounded-full transition"
+                        className="p-2 text-slate-300 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition"
                         title="Définir par défaut"
                       >
-                        <Star size={16} />
+                        <Star size={18} />
                       </button>
                     )}
                     <button 
                       onClick={() => openEditPaymentModal(pm)}
-                      className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition"
+                      className="p-2 text-slate-300 hover:text-primary hover:bg-blue-50 rounded-lg transition"
                     >
-                      <Edit2 size={16} />
+                      <Edit2 size={18} />
                     </button>
                     {!pm.isDefault && (
                       <button 
                         onClick={() => handleDeletePayment(pm.id)}
-                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full transition"
+                        className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
                       >
-                        <Trash2 size={16} />
+                        <Trash2 size={18} />
                       </button>
                     )}
                   </div>
                 </div>
               ))}
             </div>
-            <div className="mt-6 p-4 bg-amber-50 rounded-lg border border-amber-100">
-              <p className="text-xs text-amber-800 flex gap-2">
-                <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-                Vos informations de paiement sont sécurisées et chiffrées.
+            <div className="mt-8 p-4 bg-amber-50 rounded-xl border border-amber-100 flex gap-3">
+              <AlertTriangle size={20} className="shrink-0 text-amber-600" />
+              <p className="text-xs text-amber-800 font-medium leading-relaxed">
+                Vos informations de paiement sont sécurisées via Stripe. Nous ne stockons jamais vos numéros de carte complets.
               </p>
             </div>
           </div>
@@ -331,32 +362,35 @@ export const AccountPage: React.FC = () => {
       </div>
 
       {/* Activity History */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="p-6 border-b border-slate-100 bg-slate-50">
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <div className="p-6 border-b border-slate-100 bg-slate-50/50">
           <h3 className="font-bold text-slate-900 flex items-center gap-2">
-            <History size={18} /> Historique d'Activité
+            <div className="p-2 bg-slate-100 text-slate-600 rounded-lg">
+               <History size={18} />
+            </div>
+            Historique d'Activité
           </h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-slate-500 border-b border-slate-100">
               <tr>
-                <th className="px-6 py-3 font-medium">Date</th>
-                <th className="px-6 py-3 font-medium">Action</th>
-                <th className="px-6 py-3 font-medium">Description</th>
-                <th className="px-6 py-3 font-medium text-right">Montant</th>
-                <th className="px-6 py-3 font-medium text-center">Statut</th>
+                <th className="px-8 py-4 font-semibold uppercase tracking-wider text-xs">Date</th>
+                <th className="px-8 py-4 font-semibold uppercase tracking-wider text-xs">Action</th>
+                <th className="px-8 py-4 font-semibold uppercase tracking-wider text-xs">Description</th>
+                <th className="px-8 py-4 font-semibold uppercase tracking-wider text-xs text-right">Montant</th>
+                <th className="px-8 py-4 font-semibold uppercase tracking-wider text-xs text-center">Statut</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {history.map((item) => (
-                <tr key={item.id} className="hover:bg-slate-50 transition">
-                  <td className="px-6 py-4 text-slate-500 whitespace-nowrap">{item.date}</td>
-                  <td className="px-6 py-4">
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium
-                      ${item.type === 'email_sent' ? 'bg-blue-100 text-blue-700' : 
-                        item.type === 'mail_sent' ? 'bg-purple-100 text-purple-700' :
-                        'bg-slate-100 text-slate-700'
+                <tr key={item.id} className="hover:bg-slate-50/50 transition">
+                  <td className="px-8 py-5 text-slate-500 font-medium whitespace-nowrap">{item.date}</td>
+                  <td className="px-8 py-5">
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold
+                      ${item.type === 'email_sent' ? 'bg-blue-50 text-blue-700 border border-blue-100' : 
+                        item.type === 'mail_sent' ? 'bg-purple-50 text-purple-700 border border-purple-100' :
+                        'bg-slate-100 text-slate-700 border border-slate-200'
                       }`}
                     >
                       {item.type === 'email_sent' && <Mail size={12} />}
@@ -365,51 +399,46 @@ export const AccountPage: React.FC = () => {
                       {item.type === 'email_sent' ? 'Email' : item.type === 'mail_sent' ? 'Courrier' : 'Paiement'}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-slate-900">{item.desc}</td>
-                  <td className={`px-6 py-4 text-right font-medium ${item.amount ? 'text-slate-900' : 'text-slate-400'}`}>
+                  <td className="px-8 py-5 text-slate-900 font-medium">{item.desc}</td>
+                  <td className={`px-8 py-5 text-right font-bold ${item.amount ? 'text-slate-900' : 'text-slate-400'}`}>
                     {item.amount || '-'}
                   </td>
-                  <td className="px-6 py-4 text-center">
-                    {item.status === 'success' && <CheckCircle size={16} className="text-emerald-500 mx-auto" />}
+                  <td className="px-8 py-5 text-center">
+                    {item.status === 'success' && <CheckCircle size={18} className="text-emerald-500 mx-auto" />}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        <div className="p-4 border-t border-slate-100 bg-slate-50 text-center">
-          <button className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
-            Voir tout l'historique
-          </button>
-        </div>
       </div>
 
       {/* Confirmation Modal for Plan Change */}
       {showPlanModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm fade-in">
-          <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl transform transition-all scale-100">
-            <h3 className="text-xl font-bold text-slate-900 mb-4">Confirmer le changement ?</h3>
-            <p className="text-slate-600 mb-6">
-              Vous êtes sur le point de passer au plan <span className="font-bold text-indigo-600 uppercase">{pendingPlan}</span>. 
+        <div className="fixed inset-0 bg-secondary/80 flex items-center justify-center z-50 backdrop-blur-sm fade-in p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl transform transition-all scale-100">
+            <h3 className="text-2xl font-bold text-slate-900 mb-4">Confirmer le changement</h3>
+            <p className="text-slate-600 mb-8 leading-relaxed">
+              Vous allez passer au plan <span className="font-bold text-primary uppercase bg-primary/10 px-2 py-0.5 rounded">{pendingPlan}</span>. 
               {pendingPlan === 'pro' ? (
                 <span> Vous serez facturé <span className="font-bold text-slate-900">29€/mois</span> immédiatement.</span>
               ) : (
-                <span> Vous perdrez l'accès aux fonctionnalités d'automatisation IA et au support prioritaire.</span>
+                <span> Vous perdrez l'accès aux fonctionnalités d'automatisation IA.</span>
               )}
             </p>
-            <div className="flex justify-end gap-3">
+            <div className="flex justify-end gap-4">
               <button 
                 onClick={() => {
                   setShowPlanModal(false);
                   setPendingPlan(null);
                 }}
-                className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition font-medium"
+                className="px-6 py-3 text-slate-600 hover:bg-slate-100 rounded-xl transition font-bold"
               >
                 Annuler
               </button>
               <button 
                 onClick={confirmPlanChange}
-                className="px-5 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium shadow-md shadow-indigo-200"
+                className="px-6 py-3 bg-primary text-white rounded-xl hover:bg-blue-700 transition font-bold shadow-lg shadow-blue-200"
               >
                 Confirmer
               </button>
@@ -420,57 +449,57 @@ export const AccountPage: React.FC = () => {
 
       {/* Payment Method Modal */}
       {showPaymentModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm fade-in">
-          <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold text-slate-900">
+        <div className="fixed inset-0 bg-secondary/80 flex items-center justify-center z-50 backdrop-blur-sm fade-in p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
+            <div className="flex justify-between items-center mb-8">
+              <h3 className="text-2xl font-bold text-slate-900">
                 {editingPaymentId ? 'Modifier la carte' : 'Ajouter une carte'}
               </h3>
               <button 
                 onClick={() => setShowPaymentModal(false)}
-                className="text-slate-400 hover:text-slate-600 transition"
+                className="text-slate-400 hover:text-slate-600 transition p-1 hover:bg-slate-100 rounded-lg"
               >
                 <X size={24} />
               </button>
             </div>
             
-            <form onSubmit={handleSavePayment} className="space-y-4">
+            <form onSubmit={handleSavePayment} className="space-y-6">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Numéro de carte</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Numéro de carte</label>
                 <div className="relative">
-                  <CreditCard className="absolute left-3 top-3 text-slate-400" size={18} />
+                  <CreditCard className="absolute left-4 top-3.5 text-slate-400" size={20} />
                   <input 
                     type="text" 
                     placeholder="0000 0000 0000 0000"
                     value={paymentForm.number}
                     onChange={(e) => setPaymentForm({...paymentForm, number: e.target.value})}
-                    className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
-                    disabled={!!editingPaymentId} // Disable editing number for existing card
+                    className="w-full pl-12 pr-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary outline-none transition font-medium"
+                    disabled={!!editingPaymentId}
                     required
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Expiration (MM/YY)</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Expiration</label>
                   <input 
                     type="text" 
                     placeholder="MM/YY"
                     value={paymentForm.expiry}
                     onChange={(e) => setPaymentForm({...paymentForm, expiry: e.target.value})}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                    className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary outline-none transition font-medium"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">CVC</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">CVC</label>
                   <input 
                     type="text" 
                     placeholder="123"
                     value={paymentForm.cvc}
                     onChange={(e) => setPaymentForm({...paymentForm, cvc: e.target.value})}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                    className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary outline-none transition font-medium"
                     required
                   />
                 </div>
@@ -478,11 +507,11 @@ export const AccountPage: React.FC = () => {
 
               {!editingPaymentId && (
                 <div>
-                   <label className="block text-sm font-medium text-slate-700 mb-1">Marque</label>
+                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Marque</label>
                    <select 
                      value={paymentForm.brand}
                      onChange={(e) => setPaymentForm({...paymentForm, brand: e.target.value})}
-                     className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                     className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary outline-none bg-white font-medium"
                    >
                      <option value="Visa">Visa</option>
                      <option value="Mastercard">Mastercard</option>
@@ -491,17 +520,17 @@ export const AccountPage: React.FC = () => {
                 </div>
               )}
 
-              <div className="flex justify-end gap-3 mt-6">
+              <div className="flex justify-end gap-4 mt-8">
                 <button 
                   type="button"
                   onClick={() => setShowPaymentModal(false)}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition font-medium"
+                  className="px-6 py-3 text-slate-600 hover:bg-slate-100 rounded-xl transition font-bold"
                 >
                   Annuler
                 </button>
                 <button 
                   type="submit"
-                  className="px-5 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium shadow-md"
+                  className="px-6 py-3 bg-primary text-white rounded-xl hover:bg-blue-700 transition font-bold shadow-lg shadow-blue-200"
                 >
                   Sauvegarder
                 </button>

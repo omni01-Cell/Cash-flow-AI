@@ -9,12 +9,20 @@ import { AccountPage } from './pages/Account';
 import { LandingPage } from './components/LandingPage';
 import { Auth } from './pages/Auth';
 import { LanguageProvider } from './utils/i18n';
+import { UserProfile } from './types';
 
 const AppContent: React.FC = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [publicView, setPublicView] = useState<'landing' | 'auth'>('landing');
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  
+  const [userProfile, setUserProfile] = useState<UserProfile>({
+    name: 'Jean Solo',
+    email: 'jean@example.com',
+    plan: 'Pro Plan',
+    avatar: null
+  });
 
   // Unauthenticated Routing
   if (!isLoggedIn) {
@@ -47,7 +55,7 @@ const AppContent: React.FC = () => {
       case 'settings':
         return <SettingsPage />;
       case 'account':
-        return <AccountPage />;
+        return <AccountPage userProfile={userProfile} onUpdateProfile={setUserProfile} />;
       default:
         return <Dashboard />;
     }
@@ -64,6 +72,7 @@ const AppContent: React.FC = () => {
         }}
         isCollapsed={isSidebarCollapsed}
         toggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+        userProfile={userProfile}
       />
       <main className={`transition-all duration-300 ${isSidebarCollapsed ? 'ml-20' : 'ml-64'} flex-1 p-8 h-screen overflow-y-auto`}>
         {renderContent()}

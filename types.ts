@@ -30,3 +30,10 @@ export interface AdminTool {
   icon: string;
   price: string;
 }
+
+export interface UserProfile {
+  name: string;
+  email: string;
+  plan: string;
+  avatar: string | null;
+}

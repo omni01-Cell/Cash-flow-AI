@@ -6,16 +6,64 @@
     <title>Cash-flow AI</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              primary: '#1A73E8',
+              secondary: '#0A0F1F',
+              accent: '#38B2AC',
+              surface: '#F7F9FC',
+            },
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
+            animation: {
+              'float': 'float 6s ease-in-out infinite',
+              'slide-up': 'slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+              'fade-in': 'fadeIn 0.5s ease-out forwards',
+              'scale-in': 'scaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+            },
+            keyframes: {
+              float: {
+                '0%, 100%': { transform: 'translateY(0)' },
+                '50%': { transform: 'translateY(-20px)' },
+              },
+              slideUp: {
+                '0%': { transform: 'translateY(20px)', opacity: '0' },
+                '100%': { transform: 'translateY(0)', opacity: '1' },
+              },
+              fadeIn: {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              },
+              scaleIn: {
+                '0%': { transform: 'scale(0.95)', opacity: '0' },
+                '100%': { transform: 'scale(1)', opacity: '1' },
+              }
+            }
+          }
+        }
+      }
+    </script>
     <style>
       body {
         font-family: 'Inter', sans-serif;
+        background-color: #F7F9FC;
       }
-      .fade-in {
-        animation: fadeIn 0.5s ease-in-out;
+      .glass-card {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
       }
-      @keyframes fadeIn {
-        from { opacity: 0; }
-        to { opacity: 1; }
+      .perspective-1000 {
+        perspective: 1000px;
+      }
+      .rotate-y-12 {
+        transform: rotateY(-12deg) rotateX(5deg);
+        transform-style: preserve-3d;
       }
     </style>
   <script type="importmap">
@@ -31,7 +79,7 @@
 }
 </script>
 </head>
-  <body class="bg-slate-50 text-slate-900">
+  <body class="bg-surface text-slate-900 antialiased selection:bg-accent selection:text-white">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>
