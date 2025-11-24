@@ -2,7 +2,7 @@ import React from 'react';
 import { ArrowRight, CheckCircle, Shield, Zap, FileText } from 'lucide-react';
 import { useLanguage } from '../utils/i18n';
 
-export const LandingPage: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
+export const LandingPage: React.FC<{ onNavigateToAuth: () => void }> = ({ onNavigateToAuth }) => {
   const { t } = useLanguage();
 
   return (
@@ -13,7 +13,7 @@ export const LandingPage: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
           {t('app.name')}
         </div>
         <button 
-          onClick={onLogin}
+          onClick={onNavigateToAuth}
           className="bg-indigo-600 text-white px-5 py-2 rounded-full hover:bg-indigo-700 transition font-medium"
         >
           Connexion
@@ -29,7 +29,7 @@ export const LandingPage: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
           {t('land.hero_sub')}
         </p>
         <button 
-          onClick={onLogin}
+          onClick={onNavigateToAuth}
           className="group bg-slate-900 text-white text-lg px-8 py-4 rounded-full hover:bg-slate-800 transition shadow-xl hover:shadow-2xl flex items-center"
         >
           {t('land.cta')}
