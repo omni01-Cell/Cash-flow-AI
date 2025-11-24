@@ -59,17 +59,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onLog
             <span className="text-sm font-medium">{t('nav.logout')}</span>
         </button>
 
-        <div className="bg-slate-800/50 rounded-lg p-3">
-          <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-green-400 to-blue-500 flex items-center justify-center text-xs font-bold text-slate-900">
-              JS
-            </div>
-            <div>
-              <p className="text-sm font-medium text-white">Jean Solo</p>
-              <p className="text-xs text-slate-400">Pro Plan</p>
-            </div>
+        <button 
+          onClick={() => setActiveTab('account')}
+          className="w-full bg-slate-800/50 rounded-lg p-3 flex items-center space-x-3 hover:bg-slate-800 transition-colors text-left"
+        >
+          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-green-400 to-blue-500 flex items-center justify-center text-xs font-bold text-slate-900">
+            JS
           </div>
-        </div>
+          <div>
+            <p className="text-sm font-medium text-white">Jean Solo</p>
+            <p className="text-xs text-slate-400">Pro Plan</p>
+          </div>
+        </button>
       </div>
     </aside>
   );
