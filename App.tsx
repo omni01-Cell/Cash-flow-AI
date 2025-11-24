@@ -1,0 +1,61 @@
+import React, { useState } from 'react';
+import { Sidebar } from './components/Sidebar';
+import { Dashboard } from './pages/Dashboard';
+import { Recovery } from './pages/Recovery';
+import { AdminTools } from './pages/AdminTools';
+import { Compliance } from './pages/Compliance';
+import { SettingsPage } from './pages/Settings';
+import { AccountPage } from './pages/Account';
+import { LandingPage } from './components/LandingPage';
+import { LanguageProvider } from './utils/i18n';
+
+const AppContent: React.FC = () => {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [activeTab, setActiveTab] = useState('dashboard');
+
+  if (!isLoggedIn) {
+    return <LandingPage onLogin={() => setIsLoggedIn(true)} />;
+  }
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'dashboard':
+        return <Dashboard />;
+      case 'invoices':
+        return <Recovery />;
+      case 'admin':
+        return <AdminTools />;
+      case 'compliance':
+        return <Compliance />;
+      case 'settings':
+        return <SettingsPage />;
+      case 'account':
+        return <AccountPage />;
+      default:
+        return <Dashboard />;
+    }
+  };
+
+  return (
+    <div className="flex bg-slate-50 min-h-screen font-sans">
+      <Sidebar 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab} 
+        onLogout={() => setIsLoggedIn(false)}
+      />
+      <main className="ml-64 flex-1 p-8 h-screen overflow-y-auto">
+        {renderContent()}
+      </main>
+    </div>
+  );
+};
+
+const App: React.FC = () => {
+  return (
+    <LanguageProvider>
+      <AppContent />
+    </LanguageProvider>
+  );
+};
+
+export default App;
