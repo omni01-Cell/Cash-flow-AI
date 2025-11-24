@@ -1,8 +1,15 @@
 import React, { useState } from 'react';
-import { Upload, FileText, Send, Loader2, Check, ArrowRight, Download } from 'lucide-react';
+import { Upload, FileText, Send, Loader2, Check, ArrowRight, Download, AlertTriangle, Sparkles, ChevronDown, ChevronUp, Mail, Gavel, Phone } from 'lucide-react';
 import { analyzeInvoiceText, generateDunningSequence } from '../services/geminiService';
 import { Invoice, DunningDraft, InvoiceStatus } from '../types';
 import { useLanguage } from '../utils/i18n';
+
+// Extended Invoice type for internal component use with mock AI data
+interface ExtendedInvoice extends Invoice {
+  aiAnalysis?: string;
+  recommendedAction?: string;
+  actionType?: 'email' | 'legal' | 'call';
+}
 
 export const Recovery: React.FC = () => {
   const { t, language } = useLanguage();
@@ -11,10 +18,45 @@ export const Recovery: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzedInvoice, setAnalyzedInvoice] = useState<Partial<Invoice> | null>(null);
   const [drafts, setDrafts] = useState<DunningDraft[]>([]);
+  const [expandedInvoiceId, setExpandedInvoiceId] = useState<string | null>(null);
   
-  const [invoices, setInvoices] = useState<Invoice[]>([
-    { id: '1', clientName: 'Studio Graphique', amount: 1200, dueDate: '2024-02-15', status: InvoiceStatus.OVERDUE, riskLevel: 'Moyen', lastAction: 'Relance 2 (J+10)' },
-    { id: '2', clientName: 'Boulangerie du Coin', amount: 350, dueDate: '2024-03-01', status: InvoiceStatus.PENDING, riskLevel: 'Faible', lastAction: 'Facture envoyée' },
+  const [invoices, setInvoices] = useState<ExtendedInvoice[]>([
+    { 
+      id: '1', 
+      clientName: 'Studio Graphique', 
+      amount: 1200, 
+      dueDate: '2024-02-15', 
+      status: InvoiceStatus.OVERDUE, 
+      riskLevel: 'Moyen', 
+      lastAction: 'Relance 2 (J+10)',
+      aiAnalysis: "Ce client paie généralement avec 15 jours de retard. Sa santé financière semble stable mais sa gestion administrative est désorganisée.",
+      recommendedAction: "Envoyer une relance par email avec copie au service comptabilité.",
+      actionType: 'email'
+    },
+    { 
+      id: '2', 
+      clientName: 'Boulangerie du Coin', 
+      amount: 350, 
+      dueDate: '2024-03-01', 
+      status: InvoiceStatus.PENDING, 
+      riskLevel: 'Faible', 
+      lastAction: 'Facture envoyée',
+      aiAnalysis: "Client historique sans incident de paiement notable. Probablement un simple oubli.",
+      recommendedAction: "Aucune action requise pour le moment. Attendre J+3 après échéance.",
+      actionType: 'email'
+    },
+     { 
+      id: '3', 
+      clientName: 'Unknown', 
+      amount: 0, 
+      dueDate: '2026-01-31', 
+      status: InvoiceStatus.RECOVERY_STARTED, 
+      riskLevel: 'Moyen', 
+      lastAction: 'N/A',
+      aiAnalysis: "Données insuffisantes pour une analyse complète.",
+      recommendedAction: "Vérifier les informations manuellement.",
+      actionType: 'email'
+    },
   ]);
 
   const handleAnalyze = async () => {
@@ -41,14 +83,17 @@ export const Recovery: React.FC = () => {
 
   const handleConfirm = () => {
     if (analyzedInvoice) {
-      const newInvoice: Invoice = {
+      const newInvoice: ExtendedInvoice = {
         id: analyzedInvoice.id || Date.now().toString(),
         clientName: analyzedInvoice.clientName || 'Unknown',
         amount: analyzedInvoice.amount || 0,
         dueDate: analyzedInvoice.dueDate || new Date().toISOString(),
         status: InvoiceStatus.RECOVERY_STARTED,
         riskLevel: analyzedInvoice.riskLevel || 'Faible',
-        lastAction: 'Automation Started'
+        lastAction: 'Automation Started',
+        aiAnalysis: "Nouvelle facture importée. Analyse en cours...",
+        recommendedAction: "Configurer le plan de relance.",
+        actionType: 'email'
       };
       setInvoices([newInvoice, ...invoices]);
       setView('list');
@@ -56,6 +101,10 @@ export const Recovery: React.FC = () => {
       setInputText('');
       setDrafts([]);
     }
+  };
+
+  const toggleExpand = (id: string) => {
+    setExpandedInvoiceId(expandedInvoiceId === id ? null : id);
   };
 
   return (
@@ -91,41 +140,98 @@ export const Recovery: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-50">
               {invoices.map((inv) => (
-                <tr key={inv.id} className="hover:bg-slate-50/50 transition group">
-                  <td className="px-8 py-5 font-medium text-slate-900">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">
-                        {inv.clientName.charAt(0)}
+                <React.Fragment key={inv.id}>
+                  <tr 
+                    onClick={() => toggleExpand(inv.id)}
+                    className={`hover:bg-slate-50/50 transition cursor-pointer group ${expandedInvoiceId === inv.id ? 'bg-slate-50' : ''}`}
+                  >
+                    <td className="px-8 py-5 font-medium text-slate-900">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">
+                          {inv.clientName.charAt(0)}
+                        </div>
+                        {inv.clientName}
                       </div>
-                      {inv.clientName}
-                    </div>
-                  </td>
-                  <td className="px-8 py-5 font-bold text-slate-900">{inv.amount.toLocaleString(language === 'fr' ? 'fr-FR' : 'en-US')} €</td>
-                  <td className="px-8 py-5 text-slate-500">{inv.dueDate}</td>
-                  <td className="px-8 py-5">
-                    <span className={`px-3 py-1 rounded-full text-xs font-bold border ${
-                      inv.status === InvoiceStatus.OVERDUE ? 'bg-red-50 text-red-700 border-red-100' :
-                      inv.status === InvoiceStatus.PAID ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                      'bg-blue-50 text-blue-700 border-blue-100'
-                    }`}>
-                      {inv.status}
-                    </span>
-                  </td>
-                  <td className="px-8 py-5">
-                    <div className="flex items-center space-x-2">
-                       <div className={`w-2.5 h-2.5 rounded-full ${
-                         inv.riskLevel === 'Élevé' ? 'bg-red-500' : 
-                         inv.riskLevel === 'Moyen' ? 'bg-amber-500' : 'bg-emerald-500'
-                       }`} />
-                       <span className="text-sm text-slate-600">{inv.riskLevel}</span>
-                    </div>
-                  </td>
-                  <td className="px-8 py-5 text-right">
-                    <button className="text-slate-400 hover:text-primary transition">
-                      <ArrowRight size={18} />
-                    </button>
-                  </td>
-                </tr>
+                    </td>
+                    <td className="px-8 py-5 font-bold text-slate-900">{inv.amount.toLocaleString(language === 'fr' ? 'fr-FR' : 'en-US')} €</td>
+                    <td className="px-8 py-5 text-slate-500">{inv.dueDate}</td>
+                    <td className="px-8 py-5">
+                      <span className={`px-3 py-1 rounded-full text-xs font-bold border ${
+                        inv.status === InvoiceStatus.OVERDUE ? 'bg-red-50 text-red-700 border-red-100' :
+                        inv.status === InvoiceStatus.PAID ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                        'bg-blue-50 text-blue-700 border-blue-100'
+                      }`}>
+                        {inv.status}
+                      </span>
+                    </td>
+                    <td className="px-8 py-5">
+                      <div className="flex items-center space-x-2">
+                         <div className={`w-2.5 h-2.5 rounded-full ${
+                           inv.riskLevel === 'Élevé' ? 'bg-red-500' : 
+                           inv.riskLevel === 'Moyen' ? 'bg-amber-500' : 'bg-emerald-500'
+                         }`} />
+                         <span className="text-sm text-slate-600">{inv.riskLevel}</span>
+                      </div>
+                    </td>
+                    <td className="px-8 py-5 text-right">
+                      <button 
+                        className={`p-2 rounded-full transition ${expandedInvoiceId === inv.id ? 'bg-primary/10 text-primary' : 'text-slate-400 hover:text-primary hover:bg-slate-100'}`}
+                      >
+                        {expandedInvoiceId === inv.id ? <ChevronUp size={20} /> : <ArrowRight size={20} />}
+                      </button>
+                    </td>
+                  </tr>
+                  
+                  {/* Expanded Analysis Panel */}
+                  {expandedInvoiceId === inv.id && (
+                    <tr className="bg-slate-50/50">
+                      <td colSpan={6} className="px-8 pb-8 pt-2">
+                        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm animate-slide-up flex flex-col md:flex-row gap-6">
+                           {/* Left: AI Insight */}
+                           <div className="flex-1 space-y-4">
+                              <div className="flex items-center gap-2 text-primary font-bold text-sm uppercase tracking-wide">
+                                <Sparkles size={16} />
+                                Analyse IA & Contexte
+                              </div>
+                              <p className="text-slate-600 leading-relaxed text-sm">
+                                {inv.aiAnalysis}
+                              </p>
+                              
+                              <div className="bg-amber-50 p-4 rounded-lg border border-amber-100">
+                                <h4 className="text-amber-800 font-bold text-xs uppercase mb-1">Action Recommandée</h4>
+                                <p className="text-amber-900 text-sm font-medium">{inv.recommendedAction}</p>
+                              </div>
+                           </div>
+
+                           {/* Right: Actions */}
+                           <div className="w-full md:w-64 space-y-3 shrink-0">
+                              <button className="w-full flex items-center justify-between px-4 py-3 bg-primary text-white rounded-xl hover:bg-blue-700 transition shadow-md shadow-blue-100 font-medium text-sm group">
+                                <div className="flex items-center gap-2">
+                                  <Mail size={16} />
+                                  <span>Générer Email</span>
+                                </div>
+                                <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+                              </button>
+                              
+                              <button className="w-full flex items-center justify-between px-4 py-3 bg-white text-slate-700 border border-slate-200 rounded-xl hover:bg-slate-50 transition font-medium text-sm">
+                                <div className="flex items-center gap-2">
+                                  <Gavel size={16} />
+                                  <span>Mise en Demeure</span>
+                                </div>
+                              </button>
+
+                               <button className="w-full flex items-center justify-between px-4 py-3 bg-white text-slate-700 border border-slate-200 rounded-xl hover:bg-slate-50 transition font-medium text-sm">
+                                <div className="flex items-center gap-2">
+                                  <Phone size={16} />
+                                  <span>Script Téléphonique</span>
+                                </div>
+                              </button>
+                           </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               ))}
             </tbody>
           </table>
@@ -183,24 +289,80 @@ export const Recovery: React.FC = () => {
 
             {analyzedInvoice && (
               <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 animate-scale-in">
-                 <h3 className="text-lg font-bold text-slate-900 mb-6 flex items-center">
-                  <span className="w-8 h-8 rounded-lg bg-emerald-500 text-white flex items-center justify-center mr-3 text-sm font-bold shadow-md shadow-emerald-200">2</span>
-                  {t('rec.step2')}
-                </h3>
-                <div className="grid grid-cols-3 gap-4 text-sm">
-                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                    <span className="block text-slate-400 text-[10px] uppercase font-bold tracking-wider mb-1">Client</span>
-                    <span className="font-bold text-slate-900">{analyzedInvoice.clientName}</span>
+                 {/* Header Step 2 */}
+                 <div className="flex justify-between items-start mb-6">
+                    <h3 className="text-lg font-bold text-slate-900 flex items-center">
+                      <span className="w-8 h-8 rounded-lg bg-emerald-500 text-white flex items-center justify-center mr-3 text-sm font-bold shadow-md shadow-emerald-200">2</span>
+                      {t('rec.step2')}
+                    </h3>
+                    
+                    {(!analyzedInvoice.clientName || !analyzedInvoice.amount || !analyzedInvoice.dueDate) ? (
+                        <span className="bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-xs font-bold border border-amber-200 flex items-center gap-1">
+                            <AlertTriangle size={12} /> Données manquantes
+                        </span>
+                    ) : (
+                        <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold border border-emerald-200 flex items-center gap-1">
+                            <Check size={12} /> Extraction réussie
+                        </span>
+                    )}
+                 </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                  {/* Client */}
+                  <div className={`p-4 rounded-xl border transition-colors ${analyzedInvoice.clientName ? 'bg-slate-50 border-slate-100' : 'bg-red-50 border-red-100'}`}>
+                    <div className="flex justify-between items-center mb-1">
+                        <span className={`block text-[10px] uppercase font-bold tracking-wider ${analyzedInvoice.clientName ? 'text-slate-400' : 'text-red-400'}`}>Client</span>
+                        {!analyzedInvoice.clientName && <AlertTriangle size={14} className="text-red-500" />}
+                    </div>
+                    {analyzedInvoice.clientName ? (
+                        <span className="font-bold text-slate-900">{analyzedInvoice.clientName}</span>
+                    ) : (
+                        <span className="text-red-500 font-medium italic">Nom non détecté</span>
+                    )}
                   </div>
-                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                    <span className="block text-slate-400 text-[10px] uppercase font-bold tracking-wider mb-1">Montant</span>
-                    <span className="font-bold text-emerald-600 text-lg">{analyzedInvoice.amount} €</span>
+
+                  {/* Amount */}
+                  <div className={`p-4 rounded-xl border transition-colors ${analyzedInvoice.amount ? 'bg-slate-50 border-slate-100' : 'bg-red-50 border-red-100'}`}>
+                    <div className="flex justify-between items-center mb-1">
+                        <span className={`block text-[10px] uppercase font-bold tracking-wider ${analyzedInvoice.amount ? 'text-slate-400' : 'text-red-400'}`}>Montant</span>
+                        {!analyzedInvoice.amount && <AlertTriangle size={14} className="text-red-500" />}
+                    </div>
+                    {analyzedInvoice.amount ? (
+                        <span className="font-bold text-emerald-600 text-lg">{analyzedInvoice.amount} €</span>
+                    ) : (
+                         <span className="text-red-500 font-medium italic">Non détecté</span>
+                    )}
                   </div>
-                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                    <span className="block text-slate-400 text-[10px] uppercase font-bold tracking-wider mb-1">Échéance</span>
-                    <span className="font-bold text-slate-900">{analyzedInvoice.dueDate}</span>
+
+                  {/* Due Date */}
+                  <div className={`p-4 rounded-xl border transition-colors ${analyzedInvoice.dueDate ? 'bg-slate-50 border-slate-100' : 'bg-red-50 border-red-100'}`}>
+                    <div className="flex justify-between items-center mb-1">
+                        <span className={`block text-[10px] uppercase font-bold tracking-wider ${analyzedInvoice.dueDate ? 'text-slate-400' : 'text-red-400'}`}>Échéance</span>
+                        {!analyzedInvoice.dueDate && <AlertTriangle size={14} className="text-red-500" />}
+                    </div>
+                    {analyzedInvoice.dueDate ? (
+                        <span className="font-bold text-slate-900">{analyzedInvoice.dueDate}</span>
+                    ) : (
+                         <span className="text-red-500 font-medium italic">Non détectée</span>
+                    )}
                   </div>
                 </div>
+
+                 {/* AI Insight / Risk Level */}
+                 {analyzedInvoice.riskLevel && (
+                     <div className="mt-4 p-4 bg-indigo-50 rounded-xl border border-indigo-100 flex items-start gap-3">
+                        <div className="p-1.5 bg-indigo-100 text-indigo-600 rounded-lg shrink-0 mt-0.5">
+                            <Sparkles size={16} />
+                        </div>
+                        <div>
+                            <p className="text-xs font-bold text-indigo-800 uppercase tracking-wide mb-0.5">Analyse IA</p>
+                            <p className="text-sm text-indigo-700 leading-relaxed">
+                                Facture analysée avec succès. Risque identifié : <span className="font-bold px-1.5 py-0.5 bg-white rounded text-indigo-900 shadow-sm">{analyzedInvoice.riskLevel}</span>. 
+                                Les courriers générés ci-dessous ont été adaptés en conséquence.
+                            </p>
+                        </div>
+                     </div>
+                 )}
               </div>
             )}
           </div>

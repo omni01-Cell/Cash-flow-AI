@@ -164,13 +164,16 @@ export const LandingPage: React.FC<{ onNavigateToAuth: () => void }> = ({ onNavi
       </div>
 
       {/* Features Grid */}
-      <section className="py-24 px-6 bg-slate-50">
-        <div className="max-w-7xl mx-auto">
+      <section className="py-32 px-6 bg-slate-50 relative overflow-hidden">
+        {/* Background decoration */}
+        <div className="absolute inset-0 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px] opacity-50"></div>
+        
+        <div className="max-w-7xl mx-auto relative z-10">
           <div className="text-center max-w-2xl mx-auto mb-20">
-            <h2 className="text-3xl md:text-4xl font-bold text-secondary mb-4">
-              Tout ce dont vous avez besoin pour sécuriser votre CA
+            <h2 className="text-4xl md:text-5xl font-bold text-secondary mb-6 tracking-tight">
+              Tout ce dont vous avez besoin pour <span className="text-primary">sécuriser votre CA</span>
             </h2>
-            <p className="text-slate-500">
+            <p className="text-lg text-slate-500">
               Une suite d'outils puissants conçus spécifiquement pour les indépendants et TPE.
             </p>
           </div>
@@ -178,32 +181,50 @@ export const LandingPage: React.FC<{ onNavigateToAuth: () => void }> = ({ onNavi
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
               {
-                icon: <Zap size={32} />,
-                color: 'text-amber-500 bg-amber-50',
+                icon: <Zap size={28} />,
+                bg: 'bg-amber-100',
+                text: 'text-amber-600',
+                gradient: 'from-amber-400 to-orange-500',
                 title: t('land.feat1'),
                 desc: "Workflows intelligents qui adaptent le ton selon le retard et le profil client."
               },
               {
-                icon: <FileText size={32} />,
-                color: 'text-purple-500 bg-purple-50',
+                icon: <FileText size={28} />,
+                bg: 'bg-violet-100',
+                text: 'text-violet-600',
+                gradient: 'from-violet-400 to-purple-500',
                 title: t('land.feat2'),
                 desc: "Générez des courriers juridiques et administratifs complexes en quelques secondes."
               },
               {
-                icon: <Shield size={32} />,
-                color: 'text-green-500 bg-green-50',
+                icon: <Shield size={28} />,
+                bg: 'bg-emerald-100',
+                text: 'text-emerald-600',
+                gradient: 'from-emerald-400 to-green-500',
                 title: t('land.feat3'),
                 desc: "Vos données sont chiffrées. Nous ne touchons jamais vos fonds directement."
               }
             ].map((feat, idx) => (
-              <div key={idx} className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 hover:shadow-xl transition-shadow duration-300 group">
-                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center ${feat.color} mb-6 group-hover:scale-110 transition-transform`}>
+              <div key={idx} className="group relative bg-white p-8 rounded-[2rem] border border-slate-200 shadow-sm hover:shadow-2xl hover:shadow-slate-200/50 transition-all duration-500 hover:-translate-y-2 overflow-hidden">
+                {/* Gradient Border Top */}
+                <div className={`absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r ${feat.gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-500`}></div>
+                
+                {/* Background Glow */}
+                <div className={`absolute -right-10 -top-10 w-40 h-40 bg-gradient-to-br ${feat.gradient} opacity-0 group-hover:opacity-10 blur-3xl rounded-full transition-all duration-700 group-hover:scale-150`}></div>
+
+                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center ${feat.bg} ${feat.text} mb-8 transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3 shadow-sm`}>
                   {feat.icon}
                 </div>
-                <h3 className="text-xl font-bold text-secondary mb-3">{feat.title}</h3>
-                <p className="text-slate-500 leading-relaxed">
+                
+                <h3 className="text-2xl font-bold text-slate-900 mb-4">{feat.title}</h3>
+                <p className="text-slate-500 leading-relaxed mb-8">
                   {feat.desc}
                 </p>
+
+                <div className="flex items-center text-sm font-bold text-slate-900 group-hover:text-primary transition-colors cursor-pointer">
+                  <span>En savoir plus</span>
+                  <ArrowRight size={16} className="ml-2 group-hover:translate-x-1 transition-transform" />
+                </div>
               </div>
             ))}
           </div>
