@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { User, CreditCard, Edit2, Save, History, Plus, Mail, Send, FileText, CheckCircle, AlertTriangle, Camera, Trash2, Star, X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { User, CreditCard, Edit2, Save, History, Plus, Mail, Send, FileText, CheckCircle, AlertTriangle, Camera, Trash2, Star, X, Loader2 } from 'lucide-react';
 import { useLanguage } from '../utils/i18n';
-import { UserProfile } from '../types';
+import { UserProfile, PaymentMethod, BillingRecord, ActivityLog } from '../types';
+import { supabase } from '../services/supabaseClient';
 
 interface AccountPageProps {
   userProfile: UserProfile;
@@ -9,7 +10,8 @@ interface AccountPageProps {
 }
 
 export const AccountPage: React.FC<AccountPageProps> = ({ userProfile, onUpdateProfile }) => {
-  const { t, language } = useLanguage();
+  const { t } = useLanguage();
+  const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [tempProfile, setTempProfile] = useState({
     name: userProfile.name,
@@ -21,22 +23,62 @@ export const AccountPage: React.FC<AccountPageProps> = ({ userProfile, onUpdateP
   const [pendingPlan, setPendingPlan] = useState<string | null>(null);
   const [showPlanModal, setShowPlanModal] = useState(false);
 
-  // Mock Activity History Data
-  const history = [
-    { id: 1, type: 'email_sent', date: '2024-03-10', desc: 'Relance J+10 envoyée à Studio Graphique', amount: null, status: 'success' },
-    { id: 2, type: 'payment', date: '2024-03-01', desc: 'Abonnement Pro Mensuel', amount: '-29.00 €', status: 'success' },
-    { id: 3, type: 'mail_sent', date: '2024-02-28', desc: 'Lettre Recommandée (AR) - Agence Design', amount: '-15.00 €', status: 'success' },
-    { id: 4, type: 'payment', date: '2024-02-01', desc: 'Abonnement Pro Mensuel', amount: '-29.00 €', status: 'success' },
-  ];
+  // Real Data States
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [billingHistory, setBillingHistory] = useState<BillingRecord[]>([]);
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
 
-  // Payment Methods State
-  const [paymentMethods, setPaymentMethods] = useState([
-    { id: 'pm_1', type: 'card', brand: 'Visa', last4: '4242', expiry: '12/25', isDefault: true },
-    { id: 'pm_2', type: 'card', brand: 'Mastercard', last4: '8888', expiry: '10/26', isDefault: false },
-  ]);
+  // Payment Modal State
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
   const [paymentForm, setPaymentForm] = useState({ brand: 'Visa', number: '', expiry: '', cvc: '' });
+
+  useEffect(() => {
+    fetchAccountData();
+  }, [userProfile]);
+
+  const fetchAccountData = async () => {
+    setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // 1. Fetch Payment Methods
+    const { data: pmData } = await supabase
+      .from('payment_methods')
+      .select('*')
+      .order('is_default', { ascending: false });
+    if (pmData) setPaymentMethods(pmData as PaymentMethod[]);
+
+    // 2. Fetch Billing History
+    const { data: billData } = await supabase
+      .from('billing_history')
+      .select('*')
+      .order('date', { ascending: false })
+      .limit(5);
+    if (billData) setBillingHistory(billData as unknown as BillingRecord[]);
+
+    // 3. Fetch Activity Logs
+    const { data: logData } = await supabase
+      .from('activity_logs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(20);
+    
+    // Manual mapping for compatibility if column names differ slightly or just casting
+    if (logData) {
+      const mappedLogs: ActivityLog[] = logData.map((l: any) => ({
+        id: l.id,
+        type: l.type,
+        created_at: l.created_at, // Postgres timestamp string
+        description: l.description,
+        amount: l.amount,
+        status: l.status
+      }));
+      setActivityLogs(mappedLogs);
+    }
+    
+    setLoading(false);
+  };
 
   const handleEdit = () => {
     setTempProfile({ name: userProfile.name, email: userProfile.email });
@@ -68,34 +110,74 @@ export const AccountPage: React.FC<AccountPageProps> = ({ userProfile, onUpdateP
     setShowPlanModal(true);
   };
 
-  const confirmPlanChange = () => {
+  const confirmPlanChange = async () => {
     if (pendingPlan) {
+      const newPlanName = pendingPlan === 'pro' ? 'Pro Plan' : 'Starter Plan';
+      
+      // Update local state
       setSelectedPlan(pendingPlan);
       onUpdateProfile({
         ...userProfile,
-        plan: pendingPlan === 'pro' ? 'Pro Plan' : 'Starter Plan'
+        plan: newPlanName
       });
+      
+      // Log this activity to Supabase
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from('activity_logs').insert([{
+          user_id: user.id,
+          type: 'system',
+          description: `Changement de plan vers ${newPlanName}`,
+          status: 'success'
+        }]);
+        fetchAccountData(); // Refresh logs
+      }
+
       setShowPlanModal(false);
       setPendingPlan(null);
     }
   };
 
   // Payment Handlers
-  const handleSetDefaultPayment = (id: string) => {
+  const handleSetDefaultPayment = async (id: string) => {
+    // Optimistic update
+    const previousState = [...paymentMethods];
     setPaymentMethods(paymentMethods.map(pm => ({
       ...pm,
-      isDefault: pm.id === id
+      is_default: pm.id === id
     })));
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("No user");
+
+      // Set all to false
+      await supabase.from('payment_methods')
+        .update({ is_default: false })
+        .eq('user_id', user.id);
+      
+      // Set selected to true
+      await supabase.from('payment_methods')
+        .update({ is_default: true })
+        .eq('id', id);
+
+      // Refresh to be sure
+      fetchAccountData();
+    } catch (e) {
+      console.error(e);
+      setPaymentMethods(previousState); // Revert on error
+    }
   };
 
-  const handleDeletePayment = (id: string) => {
+  const handleDeletePayment = async (id: string) => {
     const methodToDelete = paymentMethods.find(pm => pm.id === id);
-    if (methodToDelete?.isDefault) {
+    if (methodToDelete?.is_default) {
       alert("Impossible de supprimer le moyen de paiement par défaut.");
       return;
     }
     if (confirm("Êtes-vous sûr de vouloir supprimer ce moyen de paiement ?")) {
-      setPaymentMethods(paymentMethods.filter(pm => pm.id !== id));
+       setPaymentMethods(paymentMethods.filter(pm => pm.id !== id)); // Optimistic
+       await supabase.from('payment_methods').delete().eq('id', id);
     }
   };
 
@@ -105,36 +187,41 @@ export const AccountPage: React.FC<AccountPageProps> = ({ userProfile, onUpdateP
     setShowPaymentModal(true);
   };
 
-  const openEditPaymentModal = (pm: typeof paymentMethods[0]) => {
+  const openEditPaymentModal = (pm: PaymentMethod) => {
     setEditingPaymentId(pm.id);
-    setPaymentForm({ brand: pm.brand, number: `•••• •••• •••• ${pm.last4}`, expiry: pm.expiry, cvc: '***' });
+    setPaymentForm({ brand: pm.brand, number: `•••• ${pm.last4}`, expiry: pm.expiry, cvc: '***' });
     setShowPaymentModal(true);
   };
 
-  const handleSavePayment = (e: React.FormEvent) => {
+  const handleSavePayment = async (e: React.FormEvent) => {
     e.preventDefault();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
     if (editingPaymentId) {
       // Edit existing
-      setPaymentMethods(paymentMethods.map(pm => 
-        pm.id === editingPaymentId 
-          ? { ...pm, expiry: paymentForm.expiry } 
-          : pm
-      ));
+      await supabase.from('payment_methods')
+        .update({ expiry: paymentForm.expiry })
+        .eq('id', editingPaymentId);
     } else {
       // Add new
       const last4 = paymentForm.number.slice(-4) || '1234';
-      const newMethod = {
-        id: `pm_${Date.now()}`,
-        type: 'card',
+      const isFirst = paymentMethods.length === 0;
+      
+      await supabase.from('payment_methods').insert([{
+        user_id: user.id,
         brand: paymentForm.brand,
         last4: last4,
         expiry: paymentForm.expiry,
-        isDefault: paymentMethods.length === 0 
-      };
-      setPaymentMethods([...paymentMethods, newMethod]);
+        is_default: isFirst
+      }]);
     }
     setShowPaymentModal(false);
+    fetchAccountData();
   };
+
+  // Helper for last invoice
+  const lastBill = billingHistory.length > 0 ? billingHistory[0] : null;
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 fade-in pb-12 relative">
@@ -276,18 +363,24 @@ export const AccountPage: React.FC<AccountPageProps> = ({ userProfile, onUpdateP
             
             <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
                <h4 className="text-xs font-bold text-slate-500 uppercase mb-3">Dernière Facture</h4>
-               <div className="flex justify-between items-center text-sm">
-                 <div className="flex items-center gap-3">
-                   <div className="p-2 bg-white rounded border border-slate-200 text-slate-400">
-                     <FileText size={16} />
+               {lastBill ? (
+                 <div className="flex justify-between items-center text-sm">
+                   <div className="flex items-center gap-3">
+                     <div className="p-2 bg-white rounded border border-slate-200 text-slate-400">
+                       <FileText size={16} />
+                     </div>
+                     <div className="font-medium text-slate-900">
+                       {new Date(lastBill.date).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+                     </div>
                    </div>
-                   <div className="font-medium text-slate-900">Mars 2024</div>
+                   <div className="flex items-center gap-4">
+                      <span className="font-bold">{lastBill.amount.toLocaleString()} €</span>
+                      <button className="text-primary hover:underline text-xs font-bold">PDF</button>
+                   </div>
                  </div>
-                 <div className="flex items-center gap-4">
-                    <span className="font-bold">29.00 €</span>
-                    <button className="text-primary hover:underline text-xs font-bold">PDF</button>
-                 </div>
-               </div>
+               ) : (
+                 <p className="text-sm text-slate-400 italic">Aucune facture disponible.</p>
+               )}
             </div>
           </div>
         </div>
@@ -310,6 +403,9 @@ export const AccountPage: React.FC<AccountPageProps> = ({ userProfile, onUpdateP
           </div>
           <div className="p-8 flex-1">
             <div className="space-y-4">
+              {paymentMethods.length === 0 && (
+                <div className="text-center py-6 text-slate-400 text-sm">Aucun moyen de paiement.</div>
+              )}
               {paymentMethods.map((pm) => (
                 <div key={pm.id} className="flex items-center justify-between p-5 border border-slate-100 rounded-2xl hover:border-primary/30 transition group bg-white shadow-sm hover:shadow-md">
                   <div className="flex items-center gap-4">
@@ -322,7 +418,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({ userProfile, onUpdateP
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
-                    {pm.isDefault ? (
+                    {pm.is_default ? (
                       <span className="px-2 py-1 bg-primary/10 text-primary text-[10px] font-bold uppercase rounded tracking-wide mr-2">Défaut</span>
                     ) : (
                       <button 
@@ -339,7 +435,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({ userProfile, onUpdateP
                     >
                       <Edit2 size={18} />
                     </button>
-                    {!pm.isDefault && (
+                    {!pm.is_default && (
                       <button 
                         onClick={() => handleDeletePayment(pm.id)}
                         className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
@@ -372,44 +468,53 @@ export const AccountPage: React.FC<AccountPageProps> = ({ userProfile, onUpdateP
           </h3>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-slate-500 border-b border-slate-100">
-              <tr>
-                <th className="px-8 py-4 font-semibold uppercase tracking-wider text-xs">Date</th>
-                <th className="px-8 py-4 font-semibold uppercase tracking-wider text-xs">Action</th>
-                <th className="px-8 py-4 font-semibold uppercase tracking-wider text-xs">Description</th>
-                <th className="px-8 py-4 font-semibold uppercase tracking-wider text-xs text-right">Montant</th>
-                <th className="px-8 py-4 font-semibold uppercase tracking-wider text-xs text-center">Statut</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {history.map((item) => (
-                <tr key={item.id} className="hover:bg-slate-50/50 transition">
-                  <td className="px-8 py-5 text-slate-500 font-medium whitespace-nowrap">{item.date}</td>
-                  <td className="px-8 py-5">
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold
-                      ${item.type === 'email_sent' ? 'bg-blue-50 text-blue-700 border border-blue-100' : 
-                        item.type === 'mail_sent' ? 'bg-purple-50 text-purple-700 border border-purple-100' :
-                        'bg-slate-100 text-slate-700 border border-slate-200'
-                      }`}
-                    >
-                      {item.type === 'email_sent' && <Mail size={12} />}
-                      {item.type === 'mail_sent' && <Send size={12} />}
-                      {item.type === 'payment' && <CreditCard size={12} />}
-                      {item.type === 'email_sent' ? 'Email' : item.type === 'mail_sent' ? 'Courrier' : 'Paiement'}
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-slate-900 font-medium">{item.desc}</td>
-                  <td className={`px-8 py-5 text-right font-bold ${item.amount ? 'text-slate-900' : 'text-slate-400'}`}>
-                    {item.amount || '-'}
-                  </td>
-                  <td className="px-8 py-5 text-center">
-                    {item.status === 'success' && <CheckCircle size={18} className="text-emerald-500 mx-auto" />}
-                  </td>
+          {loading ? (
+            <div className="p-8 text-center text-slate-400"><Loader2 className="animate-spin mx-auto" /></div>
+          ) : activityLogs.length === 0 ? (
+            <div className="p-8 text-center text-slate-400 italic">Aucune activité récente.</div>
+          ) : (
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 text-slate-500 border-b border-slate-100">
+                <tr>
+                  <th className="px-8 py-4 font-semibold uppercase tracking-wider text-xs">Date</th>
+                  <th className="px-8 py-4 font-semibold uppercase tracking-wider text-xs">Action</th>
+                  <th className="px-8 py-4 font-semibold uppercase tracking-wider text-xs">Description</th>
+                  <th className="px-8 py-4 font-semibold uppercase tracking-wider text-xs text-right">Montant</th>
+                  <th className="px-8 py-4 font-semibold uppercase tracking-wider text-xs text-center">Statut</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {activityLogs.map((item) => (
+                  <tr key={item.id} className="hover:bg-slate-50/50 transition">
+                    <td className="px-8 py-5 text-slate-500 font-medium whitespace-nowrap">
+                      {new Date(item.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="px-8 py-5">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold
+                        ${item.type === 'email_sent' ? 'bg-blue-50 text-blue-700 border border-blue-100' : 
+                          item.type === 'payment' ? 'bg-purple-50 text-purple-700 border border-purple-100' :
+                          'bg-slate-100 text-slate-700 border border-slate-200'
+                        }`}
+                      >
+                        {item.type === 'email_sent' && <Mail size={12} />}
+                        {item.type === 'mail_sent' && <Send size={12} />}
+                        {item.type === 'payment' && <CreditCard size={12} />}
+                        {item.type === 'invoice_created' && <FileText size={12} />}
+                        {item.type}
+                      </span>
+                    </td>
+                    <td className="px-8 py-5 text-slate-900 font-medium">{item.description}</td>
+                    <td className={`px-8 py-5 text-right font-bold ${item.amount ? 'text-slate-900' : 'text-slate-400'}`}>
+                      {item.amount ? item.amount + ' €' : '-'}
+                    </td>
+                    <td className="px-8 py-5 text-center">
+                      <CheckCircle size={18} className="text-emerald-500 mx-auto" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 

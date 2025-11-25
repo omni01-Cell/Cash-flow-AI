@@ -7,7 +7,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 const modelId = 'gemini-2.5-flash';
 
 /**
- * Simulates analyzing invoice text to extract structured data.
+ * Analyzes invoice text to extract structured data.
  */
 export const analyzeInvoiceText = async (text: string): Promise<Partial<Invoice>> => {
   try {
@@ -19,36 +19,76 @@ export const analyzeInvoiceText = async (text: string): Promise<Partial<Invoice>
       Text: "${text}"`,
       config: {
         responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            clientName: { type: Type.STRING },
-            amount: { type: Type.NUMBER },
-            dueDate: { type: Type.STRING, description: "YYYY-MM-DD format" },
-            riskLevel: { type: Type.STRING, enum: ["Faible", "Moyen", "Élevé"] },
-          },
-          required: ["clientName", "amount", "dueDate", "riskLevel"],
-        },
+        responseSchema: schema,
       },
     });
 
-    const json = JSON.parse(response.text || '{}');
-    return {
-      ...json,
-      id: Math.random().toString(36).substr(2, 9),
-      status: 'En attente', 
-    } as Partial<Invoice>;
-
+    return parseResponse(response);
   } catch (error) {
     console.error("Error analyzing invoice:", error);
-    return {
-      id: "err-fallback",
-      clientName: "Client Inconnu (Erreur API)",
-      amount: 0,
-      dueDate: new Date().toISOString().split('T')[0],
-      riskLevel: "Faible",
-    };
+    return fallbackInvoice;
   }
+};
+
+/**
+ * Analyzes an uploaded file (Base64) to extract structured data.
+ */
+export const analyzeInvoiceFile = async (base64Data: string, mimeType: string): Promise<Partial<Invoice>> => {
+  try {
+    const response = await ai.models.generateContent({
+      model: modelId,
+      contents: [
+        {
+          inlineData: {
+            mimeType: mimeType,
+            data: base64Data
+          }
+        },
+        {
+          text: `You are an expert accountant AI. Analyze this invoice document. Extract the following details: clientName, amount (number only), dueDate (YYYY-MM-DD), and assess the riskLevel (Faible, Moyen, Élevé).`
+        }
+      ],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: schema,
+      },
+    });
+
+    return parseResponse(response);
+  } catch (error) {
+    console.error("Error analyzing file:", error);
+    return fallbackInvoice;
+  }
+};
+
+// Shared Schema
+const schema = {
+  type: Type.OBJECT,
+  properties: {
+    clientName: { type: Type.STRING },
+    amount: { type: Type.NUMBER },
+    dueDate: { type: Type.STRING, description: "YYYY-MM-DD format" },
+    riskLevel: { type: Type.STRING, enum: ["Faible", "Moyen", "Élevé"] },
+  },
+  required: ["clientName", "amount", "dueDate", "riskLevel"],
+} as const; // Cast as const to satisfy type checker if needed, though Type enum is better
+
+// Shared Helper
+const parseResponse = (response: any): Partial<Invoice> => {
+  const json = JSON.parse(response.text || '{}');
+  return {
+    ...json,
+    id: Math.random().toString(36).substr(2, 9),
+    status: 'En attente', 
+  } as Partial<Invoice>;
+}
+
+const fallbackInvoice: Partial<Invoice> = {
+  id: "err-fallback",
+  clientName: "Client Inconnu (Erreur API)",
+  amount: 0,
+  dueDate: new Date().toISOString().split('T')[0],
+  riskLevel: "Faible",
 };
 
 /**
@@ -145,16 +185,12 @@ export const createAssistantChat = () => {
       Your goal is to help users understand and use the application.
       
       Application Features to explain if asked:
-      1. Dashboard: Provides a real-time financial overview (Amount Recovered, Pending, etc.) and recommended actions.
-      2. Recovery (Recouvrement): The core feature. Users upload invoice text, AI analyzes it, and generates a 3-step dunning sequence (Email J+3, J+10, J+20).
-      3. Bureaucracy Killer (Admin Tools): A suite of tools to generate administrative letters (Fine disputes, Visa letters, Review responses).
-      4. Compliance (Conformité): Explains the legal framework. We are a software provider, not a debt collection agency. We do not touch funds.
-      5. Settings & Account: Manage preferences, notifications, and subscription plans.
-
-      Tone: Professional, helpful, concise, and encouraging.
-      Language: Adapt to the language the user speaks (French or English). Default to French if unsure.
+      1. Dashboard: Provides a real-time financial overview.
+      2. Recovery (Recouvrement): Users upload invoice files (PDF/Image) or text. AI analyzes them and generates reminders.
+      3. Bureaucracy Killer (Admin Tools): Generate administrative letters.
+      4. Compliance: We are a software provider, not a bank.
       
-      Do not make up features that do not exist. If a user asks for legal advice, remind them you are an AI and this is for informational purposes only.`,
+      Tone: Professional, helpful, concise.`,
     }
   });
 };

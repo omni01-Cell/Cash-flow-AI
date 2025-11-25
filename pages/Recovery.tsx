@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { Upload, FileText, Send, Loader2, Check, ArrowRight, Download, AlertTriangle, Sparkles, ChevronDown, ChevronUp, Mail, Gavel, Phone } from 'lucide-react';
-import { analyzeInvoiceText, generateDunningSequence } from '../services/geminiService';
+import React, { useState, useEffect, useRef } from 'react';
+import { Upload, FileText, Send, Loader2, Check, ArrowRight, Download, AlertTriangle, Sparkles, ChevronUp, Mail, Gavel, Phone, Trash2, File, X } from 'lucide-react';
+import { analyzeInvoiceText, analyzeInvoiceFile, generateDunningSequence } from '../services/geminiService';
 import { Invoice, DunningDraft, InvoiceStatus } from '../types';
 import { useLanguage } from '../utils/i18n';
 import { supabase } from '../services/supabaseClient';
 
-// Extended Invoice type for internal component use
 interface ExtendedInvoice extends Invoice {
   aiAnalysis?: string;
   recommendedAction?: string;
@@ -15,15 +14,21 @@ interface ExtendedInvoice extends Invoice {
 export const Recovery: React.FC<{ userId: string }> = ({ userId }) => {
   const { t, language } = useLanguage();
   const [view, setView] = useState<'list' | 'new'>('list');
+  const [inputType, setInputType] = useState<'file' | 'text'>('file');
+  
   const [inputText, setInputText] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzedInvoice, setAnalyzedInvoice] = useState<Partial<Invoice> | null>(null);
   const [drafts, setDrafts] = useState<DunningDraft[]>([]);
   const [expandedInvoiceId, setExpandedInvoiceId] = useState<string | null>(null);
   const [invoices, setInvoices] = useState<ExtendedInvoice[]>([]);
   const [loadingInvoices, setLoadingInvoices] = useState(true);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch Invoices from Supabase
+  // Fetch Invoices
   useEffect(() => {
     const fetchInvoices = async () => {
       const { data, error } = await supabase
@@ -34,8 +39,6 @@ export const Recovery: React.FC<{ userId: string }> = ({ userId }) => {
       if (error) {
         console.error('Error fetching invoices:', error);
       } else {
-        // Map DB snake_case to types camelCase if needed, or adjust types
-        // Here assuming DB columns match needed props or mapping manually:
         const mappedInvoices: ExtendedInvoice[] = data.map((inv: any) => ({
           id: inv.id,
           clientName: inv.client_name,
@@ -43,9 +46,13 @@ export const Recovery: React.FC<{ userId: string }> = ({ userId }) => {
           dueDate: inv.due_date,
           status: inv.status as InvoiceStatus,
           riskLevel: inv.risk_level,
-          lastAction: 'N/A', // Not stored yet
           aiAnalysis: inv.ai_analysis,
-          recommendedAction: inv.recommended_action
+          recommendedAction: inv.recommended_action,
+          // File fields
+          fileUrl: inv.file_url,
+          fileName: inv.file_name,
+          filePath: inv.file_path,
+          fileType: inv.file_type
         }));
         setInvoices(mappedInvoices);
       }
@@ -55,11 +62,60 @@ export const Recovery: React.FC<{ userId: string }> = ({ userId }) => {
     if (userId) fetchInvoices();
   }, [userId]);
 
+  // Handle File Selection
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setSelectedFile(e.target.files[0]);
+    }
+  };
+
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      setSelectedFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        const base64String = reader.result as string;
+        // Remove data:image/jpeg;base64, part
+        const base64Data = base64String.split(',')[1];
+        resolve(base64Data);
+      };
+      reader.onerror = error => reject(error);
+    });
+  };
+
   const handleAnalyze = async () => {
-    if (!inputText) return;
+    if (!inputText && !selectedFile) return;
     setIsAnalyzing(true);
+    
     try {
-      const invoiceData = await analyzeInvoiceText(inputText);
+      let invoiceData: Partial<Invoice>;
+
+      if (inputType === 'file' && selectedFile) {
+        const base64 = await fileToBase64(selectedFile);
+        invoiceData = await analyzeInvoiceFile(base64, selectedFile.type);
+      } else {
+        invoiceData = await analyzeInvoiceText(inputText);
+      }
+
       setAnalyzedInvoice(invoiceData);
 
       const generatedDrafts = await generateDunningSequence(
@@ -70,6 +126,7 @@ export const Recovery: React.FC<{ userId: string }> = ({ userId }) => {
       setDrafts(generatedDrafts);
     } catch (e) {
       console.error(e);
+      alert("Erreur lors de l'analyse. Veuillez réessayer.");
     } finally {
       setIsAnalyzing(false);
     }
@@ -80,7 +137,31 @@ export const Recovery: React.FC<{ userId: string }> = ({ userId }) => {
       try {
         const aiInsight = "Analysé par Gemini. Risque " + analyzedInvoice.riskLevel;
         const recAction = "Démarrer séquence de relance";
+        let uploadedFileUrl = null;
+        let uploadedFilePath = null;
 
+        // Upload File to Supabase Storage
+        if (selectedFile) {
+          const fileExt = selectedFile.name.split('.').pop();
+          const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+          const filePath = `${userId}/${fileName}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from('invoices')
+            .upload(filePath, selectedFile);
+
+          if (uploadError) throw uploadError;
+
+          // Get Public URL
+          const { data: { publicUrl } } = supabase.storage
+            .from('invoices')
+            .getPublicUrl(filePath);
+          
+          uploadedFileUrl = publicUrl;
+          uploadedFilePath = filePath;
+        }
+
+        // Insert DB Record
         const { data, error } = await supabase
           .from('invoices')
           .insert([{
@@ -91,12 +172,26 @@ export const Recovery: React.FC<{ userId: string }> = ({ userId }) => {
             status: InvoiceStatus.RECOVERY_STARTED,
             risk_level: analyzedInvoice.riskLevel || 'Faible',
             ai_analysis: aiInsight,
-            recommended_action: recAction
+            recommended_action: recAction,
+            // File Meta
+            file_url: uploadedFileUrl,
+            file_path: uploadedFilePath,
+            file_name: selectedFile?.name || null,
+            file_type: selectedFile?.type || null
           }])
           .select()
           .single();
 
         if (error) throw error;
+
+        // Add Activity Log
+        await supabase.from('activity_logs').insert([{
+          user_id: userId,
+          type: 'invoice_created',
+          description: `Nouvelle procédure : ${analyzedInvoice.clientName}`,
+          amount: analyzedInvoice.amount || 0,
+          status: 'success'
+        }]);
 
         // Update local state
         const newInvoice: ExtendedInvoice = {
@@ -106,21 +201,53 @@ export const Recovery: React.FC<{ userId: string }> = ({ userId }) => {
           dueDate: data.due_date,
           status: data.status as InvoiceStatus,
           riskLevel: data.risk_level,
-          lastAction: 'Automation Started',
           aiAnalysis: data.ai_analysis,
           recommendedAction: data.recommended_action,
-          actionType: 'email'
+          fileUrl: data.file_url,
+          fileName: data.file_name,
+          filePath: data.file_path,
+          fileType: data.file_type
         };
 
         setInvoices([newInvoice, ...invoices]);
+        
+        // Reset
         setView('list');
         setAnalyzedInvoice(null);
         setInputText('');
+        setSelectedFile(null);
         setDrafts([]);
       } catch (err) {
         console.error("Error saving invoice:", err);
         alert("Erreur lors de la sauvegarde.");
       }
+    }
+  };
+
+  const handleDelete = async (id: string, filePath?: string | null) => {
+    if (!confirm("Êtes-vous sûr de vouloir supprimer cette facture et les fichiers associés ?")) return;
+
+    try {
+      // 1. Delete file from storage if exists
+      if (filePath) {
+        const { error: storageError } = await supabase.storage
+          .from('invoices')
+          .remove([filePath]);
+        if (storageError) console.error("Storage delete error", storageError);
+      }
+
+      // 2. Delete record from DB
+      const { error } = await supabase
+        .from('invoices')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setInvoices(invoices.filter(inv => inv.id !== id));
+    } catch (error) {
+      console.error("Delete error:", error);
+      alert("Impossible de supprimer la facture.");
     }
   };
 
@@ -159,12 +286,12 @@ export const Recovery: React.FC<{ userId: string }> = ({ userId }) => {
             <table className="w-full text-left">
               <thead className="bg-slate-50/50 border-b border-slate-100">
                 <tr>
-                  <th className="px-8 py-5 font-semibold text-slate-500 text-xs uppercase tracking-wider">Client</th>
-                  <th className="px-8 py-5 font-semibold text-slate-500 text-xs uppercase tracking-wider">Montant</th>
-                  <th className="px-8 py-5 font-semibold text-slate-500 text-xs uppercase tracking-wider">Échéance</th>
-                  <th className="px-8 py-5 font-semibold text-slate-500 text-xs uppercase tracking-wider">Statut</th>
-                  <th className="px-8 py-5 font-semibold text-slate-500 text-xs uppercase tracking-wider">Risque</th>
-                  <th className="px-8 py-5 font-semibold text-slate-500 text-xs uppercase tracking-wider text-right">Action</th>
+                  <th className="px-6 py-5 font-semibold text-slate-500 text-xs uppercase tracking-wider">Fichier</th>
+                  <th className="px-6 py-5 font-semibold text-slate-500 text-xs uppercase tracking-wider">Client</th>
+                  <th className="px-6 py-5 font-semibold text-slate-500 text-xs uppercase tracking-wider">Montant</th>
+                  <th className="px-6 py-5 font-semibold text-slate-500 text-xs uppercase tracking-wider">Statut</th>
+                  <th className="px-6 py-5 font-semibold text-slate-500 text-xs uppercase tracking-wider">Risque</th>
+                  <th className="px-6 py-5 font-semibold text-slate-500 text-xs uppercase tracking-wider text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
@@ -174,17 +301,29 @@ export const Recovery: React.FC<{ userId: string }> = ({ userId }) => {
                       onClick={() => toggleExpand(inv.id)}
                       className={`hover:bg-slate-50/50 transition cursor-pointer group ${expandedInvoiceId === inv.id ? 'bg-slate-50' : ''}`}
                     >
-                      <td className="px-8 py-5 font-medium text-slate-900">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">
-                            {inv.clientName?.charAt(0) || '?'}
+                      <td className="px-6 py-5">
+                        {inv.fileUrl ? (
+                          <a 
+                            href={inv.fileUrl} 
+                            target="_blank" 
+                            rel="noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex items-center justify-center w-10 h-10 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition"
+                            title={inv.fileName || "Voir le fichier"}
+                          >
+                            <FileText size={18} />
+                          </a>
+                        ) : (
+                          <div className="w-10 h-10 flex items-center justify-center text-slate-300">
+                            <FileText size={18} />
                           </div>
-                          {inv.clientName}
-                        </div>
+                        )}
                       </td>
-                      <td className="px-8 py-5 font-bold text-slate-900">{Number(inv.amount).toLocaleString(language === 'fr' ? 'fr-FR' : 'en-US')} €</td>
-                      <td className="px-8 py-5 text-slate-500">{inv.dueDate}</td>
-                      <td className="px-8 py-5">
+                      <td className="px-6 py-5 font-medium text-slate-900">
+                        {inv.clientName}
+                      </td>
+                      <td className="px-6 py-5 font-bold text-slate-900">{Number(inv.amount).toLocaleString(language === 'fr' ? 'fr-FR' : 'en-US')} €</td>
+                      <td className="px-6 py-5">
                         <span className={`px-3 py-1 rounded-full text-xs font-bold border ${
                           inv.status === InvoiceStatus.OVERDUE ? 'bg-red-50 text-red-700 border-red-100' :
                           inv.status === InvoiceStatus.PAID ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
@@ -193,7 +332,7 @@ export const Recovery: React.FC<{ userId: string }> = ({ userId }) => {
                           {inv.status}
                         </span>
                       </td>
-                      <td className="px-8 py-5">
+                      <td className="px-6 py-5">
                         <div className="flex items-center space-x-2">
                           <div className={`w-2.5 h-2.5 rounded-full ${
                             inv.riskLevel === 'Élevé' ? 'bg-red-500' : 
@@ -202,7 +341,14 @@ export const Recovery: React.FC<{ userId: string }> = ({ userId }) => {
                           <span className="text-sm text-slate-600">{inv.riskLevel}</span>
                         </div>
                       </td>
-                      <td className="px-8 py-5 text-right">
+                      <td className="px-6 py-5 text-right flex justify-end items-center gap-2">
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleDelete(inv.id, inv.filePath); }}
+                          className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition"
+                          title="Supprimer"
+                        >
+                          <Trash2 size={18} />
+                        </button>
                         <button 
                           className={`p-2 rounded-full transition ${expandedInvoiceId === inv.id ? 'bg-primary/10 text-primary' : 'text-slate-400 hover:text-primary hover:bg-slate-100'}`}
                         >
@@ -261,7 +407,7 @@ export const Recovery: React.FC<{ userId: string }> = ({ userId }) => {
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-slide-up">
-          {/* Input Section - Same as before but triggers handleConfirm which saves to DB */}
+          {/* Input Section */}
           <div className="space-y-6">
             <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 relative overflow-hidden">
                <div className="absolute top-0 right-0 w-20 h-20 bg-slate-50 rounded-bl-full -mr-10 -mt-10 z-0"></div>
@@ -271,27 +417,81 @@ export const Recovery: React.FC<{ userId: string }> = ({ userId }) => {
                   <span className="w-8 h-8 rounded-lg bg-primary text-white flex items-center justify-center mr-3 text-sm font-bold shadow-md shadow-blue-200">1</span>
                   {t('rec.step1')}
                 </h3>
-                
-                <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 bg-slate-50/50 hover:bg-white hover:border-primary transition-colors text-center cursor-text group" onClick={() => document.getElementById('inv-input')?.focus()}>
-                   <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm border border-slate-100 group-hover:scale-110 transition-transform">
-                     <FileText className="text-primary" size={24} />
-                   </div>
-                   <p className="text-sm font-medium text-slate-900 mb-1">Collez le texte de la facture</p>
-                   <p className="text-xs text-slate-500 mb-4">{t('rec.step1_desc')}</p>
-                   
-                   <textarea
-                    id="inv-input"
-                    className="w-full h-32 p-4 bg-transparent border-none focus:ring-0 text-sm font-mono resize-none text-slate-600"
-                    placeholder="Facture N° 2024-001..."
-                    value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
-                  ></textarea>
+
+                {/* Tabs */}
+                <div className="flex space-x-1 bg-slate-100 p-1 rounded-xl mb-6">
+                  <button
+                    onClick={() => { setInputType('file'); setSelectedFile(null); setInputText(''); }}
+                    className={`flex-1 py-2 text-sm font-medium rounded-lg transition ${inputType === 'file' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                  >
+                    Importer Fichier
+                  </button>
+                  <button
+                    onClick={() => { setInputType('text'); setSelectedFile(null); setInputText(''); }}
+                    className={`flex-1 py-2 text-sm font-medium rounded-lg transition ${inputType === 'text' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                  >
+                    Coller Texte
+                  </button>
                 </div>
+                
+                {inputType === 'file' ? (
+                  <div 
+                    className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors group ${
+                      dragActive ? 'border-primary bg-primary/5' : 'border-slate-200 bg-slate-50/50 hover:bg-white hover:border-primary'
+                    }`}
+                    onDragEnter={handleDrag}
+                    onDragLeave={handleDrag}
+                    onDragOver={handleDrag}
+                    onDrop={handleDrop}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <input 
+                      ref={fileInputRef}
+                      type="file" 
+                      className="hidden" 
+                      accept=".pdf,.png,.jpg,.jpeg,.txt"
+                      onChange={handleFileChange}
+                    />
+                    
+                    {selectedFile ? (
+                      <div className="py-4">
+                        <div className="w-16 h-16 bg-blue-100 text-primary rounded-full flex items-center justify-center mx-auto mb-4">
+                          <File size={32} />
+                        </div>
+                        <p className="font-bold text-slate-900">{selectedFile.name}</p>
+                        <p className="text-xs text-slate-500 mt-1">{(selectedFile.size / 1024).toFixed(1)} KB</p>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); setSelectedFile(null); }}
+                          className="mt-4 text-xs text-red-500 hover:text-red-700 font-medium flex items-center justify-center gap-1"
+                        >
+                          <X size={14} /> Supprimer
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="py-4">
+                        <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm border border-slate-100 group-hover:scale-110 transition-transform">
+                          <Upload className="text-primary" size={24} />
+                        </div>
+                        <p className="text-sm font-medium text-slate-900 mb-1">Cliquez ou glissez un fichier</p>
+                        <p className="text-xs text-slate-500">PDF, PNG, JPG (Max 5MB)</p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="border-2 border-dashed border-slate-200 rounded-xl p-4 bg-slate-50/50 focus-within:bg-white focus-within:border-primary transition-colors">
+                     <textarea
+                      className="w-full h-32 p-2 bg-transparent border-none focus:ring-0 text-sm font-mono resize-none text-slate-600"
+                      placeholder="Copiez le contenu de la facture ici..."
+                      value={inputText}
+                      onChange={(e) => setInputText(e.target.value)}
+                    ></textarea>
+                  </div>
+                )}
 
                 <div className="mt-6 flex justify-end">
                   <button
                     onClick={handleAnalyze}
-                    disabled={isAnalyzing || !inputText}
+                    disabled={isAnalyzing || (!inputText && !selectedFile)}
                     className="bg-secondary text-white px-8 py-3 rounded-xl hover:bg-slate-800 transition disabled:opacity-70 disabled:cursor-not-allowed flex items-center font-medium shadow-lg shadow-slate-200"
                   >
                     {isAnalyzing ? (
