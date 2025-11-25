@@ -44,13 +44,18 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onBack }) => {
         });
         if (error) throw error;
         
-        // Create initial profile
+        // Create or update initial profile
+        // Using upsert to avoid conflicts if a database trigger already created the profile
         if (data.user) {
           const { error: profileError } = await supabase
             .from('profiles')
-            .insert([{ id: data.user.id, name, email }]);
+            .upsert([
+              { id: data.user.id, name, email }
+            ], { onConflict: 'id' });
           
-          if (profileError) console.error("Profile creation failed", profileError);
+          if (profileError) {
+            console.error("Profile creation/update failed:", profileError.message);
+          }
         }
       }
       
@@ -58,6 +63,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onBack }) => {
       // but we call it for immediate feedback if needed.
       onLogin(); 
     } catch (error: any) {
+      console.error(error);
       setErrorMsg(error.message || "Une erreur est survenue");
     } finally {
       setIsLoading(false);
