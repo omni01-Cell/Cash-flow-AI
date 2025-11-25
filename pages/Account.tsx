@@ -220,6 +220,16 @@ export const AccountPage: React.FC<AccountPageProps> = ({ userProfile, onUpdateP
     fetchAccountData();
   };
 
+  const getInitials = (name: string) => {
+    if (!name) return 'U';
+    return name
+      .split(' ')
+      .map(n => n ? n[0] : '')
+      .join('')
+      .substring(0, 2)
+      .toUpperCase();
+  };
+
   // Helper for last invoice
   const lastBill = billingHistory.length > 0 ? billingHistory[0] : null;
 
@@ -233,11 +243,23 @@ export const AccountPage: React.FC<AccountPageProps> = ({ userProfile, onUpdateP
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8">
         <div className="flex flex-col md:flex-row items-start md:items-center gap-8">
           <div className="relative group">
-            <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 shrink-0 overflow-hidden border-4 border-white shadow-lg">
+            <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 shrink-0 overflow-hidden border-4 border-white shadow-lg relative">
               {isEditing ? (
-                 tempAvatar ? <img src={tempAvatar} alt="Profile" className="w-full h-full object-cover" /> : <User size={40} />
+                 tempAvatar ? (
+                   <img src={tempAvatar} alt="Profile" className="w-full h-full object-cover" />
+                 ) : (
+                   <div className="w-full h-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-3xl font-bold text-white">
+                     {getInitials(tempProfile.name)}
+                   </div>
+                 )
               ) : (
-                 userProfile.avatar ? <img src={userProfile.avatar} alt="Profile" className="w-full h-full object-cover" /> : <User size={40} />
+                 userProfile.avatar ? (
+                   <img src={userProfile.avatar} alt="Profile" className="w-full h-full object-cover" />
+                 ) : (
+                   <div className="w-full h-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-3xl font-bold text-white">
+                     {getInitials(userProfile.name)}
+                   </div>
+                 )
               )}
             </div>
             {isEditing && (
