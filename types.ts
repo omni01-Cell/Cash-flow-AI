@@ -11,6 +11,7 @@ export interface Invoice {
   clientName: string;
   amount: number;
   dueDate: string;
+  paymentDate?: string | null; // Added for financial charts
   status: InvoiceStatus;
   riskLevel: 'Faible' | 'Moyen' | 'Élevé';
   lastAction?: string;
