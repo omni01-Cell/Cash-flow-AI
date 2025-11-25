@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './pages/Dashboard';
 import { Recovery } from './pages/Recovery';
@@ -11,26 +11,104 @@ import { Auth } from './pages/Auth';
 import { ChatBot } from './components/ChatBot';
 import { LanguageProvider } from './utils/i18n';
 import { UserProfile } from './types';
+import { supabase } from './services/supabaseClient';
 
 const AppContent: React.FC = () => {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [session, setSession] = useState<any>(null);
   const [publicView, setPublicView] = useState<'landing' | 'auth'>('landing');
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   
   const [userProfile, setUserProfile] = useState<UserProfile>({
-    name: 'Jean Solo',
-    email: 'jean@example.com',
-    plan: 'Pro Plan',
+    name: '',
+    email: '',
+    plan: 'Starter',
     avatar: null
   });
 
+  useEffect(() => {
+    // 1. Check active session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) fetchProfile(session.user.id);
+      setIsLoading(false);
+    });
+
+    // 2. Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session) fetchProfile(session.user.id);
+      else setPublicView('landing');
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const fetchProfile = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching profile:', error);
+      }
+
+      if (data) {
+        setUserProfile({
+          name: data.name || 'User',
+          email: data.email || '',
+          plan: data.plan || 'Starter',
+          avatar: data.avatar_url || null
+        });
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const updateProfile = async (newProfile: UserProfile) => {
+    if (!session?.user) return;
+    
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .upsert({
+          id: session.user.id,
+          name: newProfile.name,
+          plan: newProfile.plan,
+          avatar_url: newProfile.avatar,
+          // email is handled by auth, usually shouldn't change here without re-auth, 
+          // but we can update the display email
+        });
+
+      if (error) throw error;
+      setUserProfile(newProfile);
+    } catch (error) {
+      console.error('Error updating profile:', error);
+    }
+  };
+
+  // Loading Screen
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
   // Unauthenticated Routing
-  if (!isLoggedIn) {
+  if (!session) {
     if (publicView === 'auth') {
       return (
         <Auth 
-          onLogin={() => setIsLoggedIn(true)} 
+          onLogin={() => {}} // Handled by onAuthStateChange
           onBack={() => setPublicView('landing')} 
         />
       );
@@ -48,7 +126,7 @@ const AppContent: React.FC = () => {
       case 'dashboard':
         return <Dashboard />;
       case 'invoices':
-        return <Recovery />;
+        return <Recovery userId={session.user.id} />;
       case 'admin':
         return <AdminTools />;
       case 'compliance':
@@ -56,7 +134,7 @@ const AppContent: React.FC = () => {
       case 'settings':
         return <SettingsPage />;
       case 'account':
-        return <AccountPage userProfile={userProfile} onUpdateProfile={setUserProfile} />;
+        return <AccountPage userProfile={userProfile} onUpdateProfile={updateProfile} />;
       default:
         return <Dashboard />;
     }
@@ -67,10 +145,7 @@ const AppContent: React.FC = () => {
       <Sidebar 
         activeTab={activeTab} 
         setActiveTab={setActiveTab} 
-        onLogout={() => {
-          setIsLoggedIn(false);
-          setPublicView('landing');
-        }}
+        onLogout={() => supabase.auth.signOut()}
         isCollapsed={isSidebarCollapsed}
         toggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
         userProfile={userProfile}

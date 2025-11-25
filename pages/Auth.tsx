@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Mail, Lock, User, Loader2, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Mail, Lock, User, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { useLanguage } from '../utils/i18n';
+import { supabase } from '../services/supabaseClient';
 
 interface AuthProps {
   onLogin: () => void;
@@ -11,18 +12,56 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onBack }) => {
   const { t } = useLanguage();
   const [isLogin, setIsLogin] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
+    setErrorMsg(null);
+
+    try {
+      if (isLogin) {
+        // Sign In
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error) throw error;
+      } else {
+        // Sign Up
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              name: name,
+            },
+          },
+        });
+        if (error) throw error;
+        
+        // Create initial profile
+        if (data.user) {
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .insert([{ id: data.user.id, name, email }]);
+          
+          if (profileError) console.error("Profile creation failed", profileError);
+        }
+      }
+      
+      // onLogin prop isn't strictly needed as App.tsx listens to auth state, 
+      // but we call it for immediate feedback if needed.
+      onLogin(); 
+    } catch (error: any) {
+      setErrorMsg(error.message || "Une erreur est survenue");
+    } finally {
       setIsLoading(false);
-      onLogin();
-    }, 1500);
+    }
   };
 
   return (
@@ -95,6 +134,13 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onBack }) => {
               {isLogin ? 'Entrez vos identifiants pour accéder à votre espace.' : 'Commencez votre essai gratuit de 14 jours.'}
             </p>
           </div>
+
+          {errorMsg && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 text-red-600 text-sm">
+              <AlertCircle size={18} />
+              {errorMsg}
+            </div>
+          )}
 
           <form className="space-y-6" onSubmit={handleSubmit}>
             {!isLogin && (
@@ -170,7 +216,10 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onBack }) => {
             <p className="text-sm text-slate-500">
               {isLogin ? "Vous n'avez pas de compte ?" : "Vous avez déjà un compte ?"}
               <button
-                onClick={() => setIsLogin(!isLogin)}
+                onClick={() => {
+                   setIsLogin(!isLogin);
+                   setErrorMsg(null);
+                }}
                 className="ml-2 font-bold text-primary hover:text-blue-700 transition-colors"
               >
                 {isLogin ? "S'inscrire" : "Se connecter"}

@@ -1,17 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Upload, FileText, Send, Loader2, Check, ArrowRight, Download, AlertTriangle, Sparkles, ChevronDown, ChevronUp, Mail, Gavel, Phone } from 'lucide-react';
 import { analyzeInvoiceText, generateDunningSequence } from '../services/geminiService';
 import { Invoice, DunningDraft, InvoiceStatus } from '../types';
 import { useLanguage } from '../utils/i18n';
+import { supabase } from '../services/supabaseClient';
 
-// Extended Invoice type for internal component use with mock AI data
+// Extended Invoice type for internal component use
 interface ExtendedInvoice extends Invoice {
   aiAnalysis?: string;
   recommendedAction?: string;
   actionType?: 'email' | 'legal' | 'call';
 }
 
-export const Recovery: React.FC = () => {
+export const Recovery: React.FC<{ userId: string }> = ({ userId }) => {
   const { t, language } = useLanguage();
   const [view, setView] = useState<'list' | 'new'>('list');
   const [inputText, setInputText] = useState('');
@@ -19,55 +20,48 @@ export const Recovery: React.FC = () => {
   const [analyzedInvoice, setAnalyzedInvoice] = useState<Partial<Invoice> | null>(null);
   const [drafts, setDrafts] = useState<DunningDraft[]>([]);
   const [expandedInvoiceId, setExpandedInvoiceId] = useState<string | null>(null);
-  
-  const [invoices, setInvoices] = useState<ExtendedInvoice[]>([
-    { 
-      id: '1', 
-      clientName: 'Studio Graphique', 
-      amount: 1200, 
-      dueDate: '2024-02-15', 
-      status: InvoiceStatus.OVERDUE, 
-      riskLevel: 'Moyen', 
-      lastAction: 'Relance 2 (J+10)',
-      aiAnalysis: "Ce client paie généralement avec 15 jours de retard. Sa santé financière semble stable mais sa gestion administrative est désorganisée.",
-      recommendedAction: "Envoyer une relance par email avec copie au service comptabilité.",
-      actionType: 'email'
-    },
-    { 
-      id: '2', 
-      clientName: 'Boulangerie du Coin', 
-      amount: 350, 
-      dueDate: '2024-03-01', 
-      status: InvoiceStatus.PENDING, 
-      riskLevel: 'Faible', 
-      lastAction: 'Facture envoyée',
-      aiAnalysis: "Client historique sans incident de paiement notable. Probablement un simple oubli.",
-      recommendedAction: "Aucune action requise pour le moment. Attendre J+3 après échéance.",
-      actionType: 'email'
-    },
-     { 
-      id: '3', 
-      clientName: 'Unknown', 
-      amount: 0, 
-      dueDate: '2026-01-31', 
-      status: InvoiceStatus.RECOVERY_STARTED, 
-      riskLevel: 'Moyen', 
-      lastAction: 'N/A',
-      aiAnalysis: "Données insuffisantes pour une analyse complète.",
-      recommendedAction: "Vérifier les informations manuellement.",
-      actionType: 'email'
-    },
-  ]);
+  const [invoices, setInvoices] = useState<ExtendedInvoice[]>([]);
+  const [loadingInvoices, setLoadingInvoices] = useState(true);
+
+  // Fetch Invoices from Supabase
+  useEffect(() => {
+    const fetchInvoices = async () => {
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) {
+        console.error('Error fetching invoices:', error);
+      } else {
+        // Map DB snake_case to types camelCase if needed, or adjust types
+        // Here assuming DB columns match needed props or mapping manually:
+        const mappedInvoices: ExtendedInvoice[] = data.map((inv: any) => ({
+          id: inv.id,
+          clientName: inv.client_name,
+          amount: inv.amount,
+          dueDate: inv.due_date,
+          status: inv.status as InvoiceStatus,
+          riskLevel: inv.risk_level,
+          lastAction: 'N/A', // Not stored yet
+          aiAnalysis: inv.ai_analysis,
+          recommendedAction: inv.recommended_action
+        }));
+        setInvoices(mappedInvoices);
+      }
+      setLoadingInvoices(false);
+    };
+
+    if (userId) fetchInvoices();
+  }, [userId]);
 
   const handleAnalyze = async () => {
     if (!inputText) return;
     setIsAnalyzing(true);
     try {
-      // 1. Extract Data
       const invoiceData = await analyzeInvoiceText(inputText);
       setAnalyzedInvoice(invoiceData);
 
-      // 2. Generate Drafts with correct language
       const generatedDrafts = await generateDunningSequence(
         invoiceData.clientName || 'Client', 
         invoiceData.amount || 0,
@@ -81,25 +75,52 @@ export const Recovery: React.FC = () => {
     }
   };
 
-  const handleConfirm = () => {
-    if (analyzedInvoice) {
-      const newInvoice: ExtendedInvoice = {
-        id: analyzedInvoice.id || Date.now().toString(),
-        clientName: analyzedInvoice.clientName || 'Unknown',
-        amount: analyzedInvoice.amount || 0,
-        dueDate: analyzedInvoice.dueDate || new Date().toISOString(),
-        status: InvoiceStatus.RECOVERY_STARTED,
-        riskLevel: analyzedInvoice.riskLevel || 'Faible',
-        lastAction: 'Automation Started',
-        aiAnalysis: "Nouvelle facture importée. Analyse en cours...",
-        recommendedAction: "Configurer le plan de relance.",
-        actionType: 'email'
-      };
-      setInvoices([newInvoice, ...invoices]);
-      setView('list');
-      setAnalyzedInvoice(null);
-      setInputText('');
-      setDrafts([]);
+  const handleConfirm = async () => {
+    if (analyzedInvoice && userId) {
+      try {
+        const aiInsight = "Analysé par Gemini. Risque " + analyzedInvoice.riskLevel;
+        const recAction = "Démarrer séquence de relance";
+
+        const { data, error } = await supabase
+          .from('invoices')
+          .insert([{
+            user_id: userId,
+            client_name: analyzedInvoice.clientName || 'Unknown',
+            amount: analyzedInvoice.amount || 0,
+            due_date: analyzedInvoice.dueDate || new Date().toISOString(),
+            status: InvoiceStatus.RECOVERY_STARTED,
+            risk_level: analyzedInvoice.riskLevel || 'Faible',
+            ai_analysis: aiInsight,
+            recommended_action: recAction
+          }])
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        // Update local state
+        const newInvoice: ExtendedInvoice = {
+          id: data.id,
+          clientName: data.client_name,
+          amount: data.amount,
+          dueDate: data.due_date,
+          status: data.status as InvoiceStatus,
+          riskLevel: data.risk_level,
+          lastAction: 'Automation Started',
+          aiAnalysis: data.ai_analysis,
+          recommendedAction: data.recommended_action,
+          actionType: 'email'
+        };
+
+        setInvoices([newInvoice, ...invoices]);
+        setView('list');
+        setAnalyzedInvoice(null);
+        setInputText('');
+        setDrafts([]);
+      } catch (err) {
+        console.error("Error saving invoice:", err);
+        alert("Erreur lors de la sauvegarde.");
+      }
     }
   };
 
@@ -127,118 +148,120 @@ export const Recovery: React.FC = () => {
 
       {view === 'list' ? (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-          <table className="w-full text-left">
-            <thead className="bg-slate-50/50 border-b border-slate-100">
-              <tr>
-                <th className="px-8 py-5 font-semibold text-slate-500 text-xs uppercase tracking-wider">Client</th>
-                <th className="px-8 py-5 font-semibold text-slate-500 text-xs uppercase tracking-wider">Montant</th>
-                <th className="px-8 py-5 font-semibold text-slate-500 text-xs uppercase tracking-wider">Échéance</th>
-                <th className="px-8 py-5 font-semibold text-slate-500 text-xs uppercase tracking-wider">Statut</th>
-                <th className="px-8 py-5 font-semibold text-slate-500 text-xs uppercase tracking-wider">Risque</th>
-                <th className="px-8 py-5 font-semibold text-slate-500 text-xs uppercase tracking-wider text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {invoices.map((inv) => (
-                <React.Fragment key={inv.id}>
-                  <tr 
-                    onClick={() => toggleExpand(inv.id)}
-                    className={`hover:bg-slate-50/50 transition cursor-pointer group ${expandedInvoiceId === inv.id ? 'bg-slate-50' : ''}`}
-                  >
-                    <td className="px-8 py-5 font-medium text-slate-900">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">
-                          {inv.clientName.charAt(0)}
-                        </div>
-                        {inv.clientName}
-                      </div>
-                    </td>
-                    <td className="px-8 py-5 font-bold text-slate-900">{inv.amount.toLocaleString(language === 'fr' ? 'fr-FR' : 'en-US')} €</td>
-                    <td className="px-8 py-5 text-slate-500">{inv.dueDate}</td>
-                    <td className="px-8 py-5">
-                      <span className={`px-3 py-1 rounded-full text-xs font-bold border ${
-                        inv.status === InvoiceStatus.OVERDUE ? 'bg-red-50 text-red-700 border-red-100' :
-                        inv.status === InvoiceStatus.PAID ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                        'bg-blue-50 text-blue-700 border-blue-100'
-                      }`}>
-                        {inv.status}
-                      </span>
-                    </td>
-                    <td className="px-8 py-5">
-                      <div className="flex items-center space-x-2">
-                         <div className={`w-2.5 h-2.5 rounded-full ${
-                           inv.riskLevel === 'Élevé' ? 'bg-red-500' : 
-                           inv.riskLevel === 'Moyen' ? 'bg-amber-500' : 'bg-emerald-500'
-                         }`} />
-                         <span className="text-sm text-slate-600">{inv.riskLevel}</span>
-                      </div>
-                    </td>
-                    <td className="px-8 py-5 text-right">
-                      <button 
-                        className={`p-2 rounded-full transition ${expandedInvoiceId === inv.id ? 'bg-primary/10 text-primary' : 'text-slate-400 hover:text-primary hover:bg-slate-100'}`}
-                      >
-                        {expandedInvoiceId === inv.id ? <ChevronUp size={20} /> : <ArrowRight size={20} />}
-                      </button>
-                    </td>
-                  </tr>
-                  
-                  {/* Expanded Analysis Panel */}
-                  {expandedInvoiceId === inv.id && (
-                    <tr className="bg-slate-50/50">
-                      <td colSpan={6} className="px-8 pb-8 pt-2">
-                        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm animate-slide-up flex flex-col md:flex-row gap-6">
-                           {/* Left: AI Insight */}
-                           <div className="flex-1 space-y-4">
-                              <div className="flex items-center gap-2 text-primary font-bold text-sm uppercase tracking-wide">
-                                <Sparkles size={16} />
-                                Analyse IA & Contexte
-                              </div>
-                              <p className="text-slate-600 leading-relaxed text-sm">
-                                {inv.aiAnalysis}
-                              </p>
-                              
-                              <div className="bg-amber-50 p-4 rounded-lg border border-amber-100">
-                                <h4 className="text-amber-800 font-bold text-xs uppercase mb-1">Action Recommandée</h4>
-                                <p className="text-amber-900 text-sm font-medium">{inv.recommendedAction}</p>
-                              </div>
-                           </div>
-
-                           {/* Right: Actions */}
-                           <div className="w-full md:w-64 space-y-3 shrink-0">
-                              <button className="w-full flex items-center justify-between px-4 py-3 bg-primary text-white rounded-xl hover:bg-blue-700 transition shadow-md shadow-blue-100 font-medium text-sm group">
-                                <div className="flex items-center gap-2">
-                                  <Mail size={16} />
-                                  <span>Générer Email</span>
-                                </div>
-                                <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
-                              </button>
-                              
-                              <button className="w-full flex items-center justify-between px-4 py-3 bg-white text-slate-700 border border-slate-200 rounded-xl hover:bg-slate-50 transition font-medium text-sm">
-                                <div className="flex items-center gap-2">
-                                  <Gavel size={16} />
-                                  <span>Mise en Demeure</span>
-                                </div>
-                              </button>
-
-                               <button className="w-full flex items-center justify-between px-4 py-3 bg-white text-slate-700 border border-slate-200 rounded-xl hover:bg-slate-50 transition font-medium text-sm">
-                                <div className="flex items-center gap-2">
-                                  <Phone size={16} />
-                                  <span>Script Téléphonique</span>
-                                </div>
-                              </button>
-                           </div>
+          {loadingInvoices ? (
+            <div className="p-12 text-center text-slate-400">Chargement...</div>
+          ) : invoices.length === 0 ? (
+             <div className="p-12 text-center text-slate-400">
+               <FileText size={48} className="mx-auto mb-4 text-slate-200" />
+               <p>Aucune facture en cours.</p>
+             </div>
+          ) : (
+            <table className="w-full text-left">
+              <thead className="bg-slate-50/50 border-b border-slate-100">
+                <tr>
+                  <th className="px-8 py-5 font-semibold text-slate-500 text-xs uppercase tracking-wider">Client</th>
+                  <th className="px-8 py-5 font-semibold text-slate-500 text-xs uppercase tracking-wider">Montant</th>
+                  <th className="px-8 py-5 font-semibold text-slate-500 text-xs uppercase tracking-wider">Échéance</th>
+                  <th className="px-8 py-5 font-semibold text-slate-500 text-xs uppercase tracking-wider">Statut</th>
+                  <th className="px-8 py-5 font-semibold text-slate-500 text-xs uppercase tracking-wider">Risque</th>
+                  <th className="px-8 py-5 font-semibold text-slate-500 text-xs uppercase tracking-wider text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {invoices.map((inv) => (
+                  <React.Fragment key={inv.id}>
+                    <tr 
+                      onClick={() => toggleExpand(inv.id)}
+                      className={`hover:bg-slate-50/50 transition cursor-pointer group ${expandedInvoiceId === inv.id ? 'bg-slate-50' : ''}`}
+                    >
+                      <td className="px-8 py-5 font-medium text-slate-900">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">
+                            {inv.clientName?.charAt(0) || '?'}
+                          </div>
+                          {inv.clientName}
                         </div>
                       </td>
+                      <td className="px-8 py-5 font-bold text-slate-900">{Number(inv.amount).toLocaleString(language === 'fr' ? 'fr-FR' : 'en-US')} €</td>
+                      <td className="px-8 py-5 text-slate-500">{inv.dueDate}</td>
+                      <td className="px-8 py-5">
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold border ${
+                          inv.status === InvoiceStatus.OVERDUE ? 'bg-red-50 text-red-700 border-red-100' :
+                          inv.status === InvoiceStatus.PAID ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                          'bg-blue-50 text-blue-700 border-blue-100'
+                        }`}>
+                          {inv.status}
+                        </span>
+                      </td>
+                      <td className="px-8 py-5">
+                        <div className="flex items-center space-x-2">
+                          <div className={`w-2.5 h-2.5 rounded-full ${
+                            inv.riskLevel === 'Élevé' ? 'bg-red-500' : 
+                            inv.riskLevel === 'Moyen' ? 'bg-amber-500' : 'bg-emerald-500'
+                          }`} />
+                          <span className="text-sm text-slate-600">{inv.riskLevel}</span>
+                        </div>
+                      </td>
+                      <td className="px-8 py-5 text-right">
+                        <button 
+                          className={`p-2 rounded-full transition ${expandedInvoiceId === inv.id ? 'bg-primary/10 text-primary' : 'text-slate-400 hover:text-primary hover:bg-slate-100'}`}
+                        >
+                          {expandedInvoiceId === inv.id ? <ChevronUp size={20} /> : <ArrowRight size={20} />}
+                        </button>
+                      </td>
                     </tr>
-                  )}
-                </React.Fragment>
-              ))}
-            </tbody>
-          </table>
+                    
+                    {/* Expanded Analysis Panel */}
+                    {expandedInvoiceId === inv.id && (
+                      <tr className="bg-slate-50/50">
+                        <td colSpan={6} className="px-8 pb-8 pt-2">
+                          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm animate-slide-up flex flex-col md:flex-row gap-6">
+                            {/* Left: AI Insight */}
+                            <div className="flex-1 space-y-4">
+                                <div className="flex items-center gap-2 text-primary font-bold text-sm uppercase tracking-wide">
+                                  <Sparkles size={16} />
+                                  Analyse IA & Contexte
+                                </div>
+                                <p className="text-slate-600 leading-relaxed text-sm">
+                                  {inv.aiAnalysis || "Analyse en attente..."}
+                                </p>
+                                
+                                <div className="bg-amber-50 p-4 rounded-lg border border-amber-100">
+                                  <h4 className="text-amber-800 font-bold text-xs uppercase mb-1">Action Recommandée</h4>
+                                  <p className="text-amber-900 text-sm font-medium">{inv.recommendedAction || "Aucune action spécifique."}</p>
+                                </div>
+                            </div>
+
+                            {/* Right: Actions */}
+                            <div className="w-full md:w-64 space-y-3 shrink-0">
+                                <button className="w-full flex items-center justify-between px-4 py-3 bg-primary text-white rounded-xl hover:bg-blue-700 transition shadow-md shadow-blue-100 font-medium text-sm group">
+                                  <div className="flex items-center gap-2">
+                                    <Mail size={16} />
+                                    <span>Générer Email</span>
+                                  </div>
+                                  <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+                                </button>
+                                
+                                <button className="w-full flex items-center justify-between px-4 py-3 bg-white text-slate-700 border border-slate-200 rounded-xl hover:bg-slate-50 transition font-medium text-sm">
+                                  <div className="flex items-center gap-2">
+                                    <Gavel size={16} />
+                                    <span>Mise en Demeure</span>
+                                  </div>
+                                </button>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-slide-up">
-          {/* Input Section */}
+          {/* Input Section - Same as before but triggers handleConfirm which saves to DB */}
           <div className="space-y-6">
             <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 relative overflow-hidden">
                <div className="absolute top-0 right-0 w-20 h-20 bg-slate-50 rounded-bl-full -mr-10 -mt-10 z-0"></div>
