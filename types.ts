@@ -14,6 +14,9 @@ export interface Invoice {
   status: InvoiceStatus;
   riskLevel: 'Faible' | 'Moyen' | 'Élevé';
   lastAction?: string;
+  aiAnalysis?: string;
+  recommendedAction?: string;
+  actionType?: 'email' | 'legal' | 'call';
 }
 
 export interface DunningDraft {
@@ -36,4 +39,11 @@ export interface UserProfile {
   email: string;
   plan: string;
   avatar: string | null;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'model';
+  text: string;
+  timestamp: Date;
 }

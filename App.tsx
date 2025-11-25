@@ -8,6 +8,7 @@ import { SettingsPage } from './pages/Settings';
 import { AccountPage } from './pages/Account';
 import { LandingPage } from './components/LandingPage';
 import { Auth } from './pages/Auth';
+import { ChatBot } from './components/ChatBot';
 import { LanguageProvider } from './utils/i18n';
 import { UserProfile } from './types';
 
@@ -77,6 +78,9 @@ const AppContent: React.FC = () => {
       <main className={`transition-all duration-300 ${isSidebarCollapsed ? 'ml-20' : 'ml-64'} flex-1 p-8 h-screen overflow-y-auto`}>
         {renderContent()}
       </main>
+      
+      {/* AI Assistant Chatbot */}
+      <ChatBot />
     </div>
   );
 };
