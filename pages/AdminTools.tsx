@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { FileWarning, Plane, Star, ArrowRight, Loader2, Sparkles, FileText } from 'lucide-react';
+import { FileWarning, Plane, Star, ArrowRight, Loader2, Sparkles, FileText, Download } from 'lucide-react';
 import { generateAdministrativeLetter } from '../services/geminiService';
 import { useLanguage } from '../utils/i18n';
+import { jsPDF } from "jspdf";
 
 export const AdminTools: React.FC = () => {
   const { t, language } = useLanguage();
@@ -9,6 +10,18 @@ export const AdminTools: React.FC = () => {
   const [context, setContext] = useState('');
   const [generatedResult, setGeneratedResult] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const handleDownloadPDF = () => {
+    if (!generatedResult) return;
+    const doc = new jsPDF();
+
+    // Split text to fit page
+    const splitText = doc.splitTextToSize(generatedResult, 180);
+
+    doc.setFontSize(12);
+    doc.text(splitText, 15, 20);
+    doc.save("document-genere.pdf");
+  };
 
   const tools = [
     {
@@ -113,11 +126,21 @@ export const AdminTools: React.FC = () => {
               </button>
             </div>
 
-            <div className="bg-slate-50 rounded-xl border border-slate-200 p-8 relative min-h-[300px]">
+            <div className="bg-slate-50 rounded-xl border border-slate-200 p-8 relative min-h-[300px] flex flex-col">
               {generatedResult ? (
-                <div className="prose prose-sm max-w-none text-slate-800 whitespace-pre-wrap font-medium">
-                  {generatedResult}
-                </div>
+                <>
+                  <div className="prose prose-sm max-w-none text-slate-800 whitespace-pre-wrap font-medium flex-1 mb-6">
+                    {generatedResult}
+                  </div>
+                  <div className="flex justify-end pt-4 border-t border-slate-200">
+                    <button
+                      onClick={handleDownloadPDF}
+                      className="flex items-center gap-2 text-primary hover:text-blue-700 font-bold transition"
+                    >
+                      <Download size={18} /> Télécharger PDF
+                    </button>
+                  </div>
+                </>
               ) : (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400">
                   <FileText size={48} className="mb-4 text-slate-300" />
