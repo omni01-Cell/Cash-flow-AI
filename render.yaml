@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: cash-flow-ai
+    env: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
