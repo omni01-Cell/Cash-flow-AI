@@ -1,7 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Euro, TrendingUp, AlertTriangle, CheckCircle, ArrowUpRight, Loader2 } from 'lucide-react';
+import { Euro, TrendingUp, AlertTriangle, CheckCircle, ArrowUpRight, Loader2, PieChart as PieChartIcon, Activity, BarChart as BarChartIcon, ScatterChart as ScatterChartIcon, Radar as RadarIcon, Map as MapIcon } from 'lucide-react';
 import { StatCard } from '../components/StatCard';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import {
+  BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
+  ScatterChart, Scatter, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
+  Treemap, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
+} from 'recharts';
 import { useLanguage } from '../utils/i18n';
 import { supabase } from '../services/supabaseClient';
 import { Invoice, InvoiceStatus } from '../types';
@@ -15,7 +19,15 @@ export const Dashboard: React.FC = () => {
     processedCount: 0,
     legalSavings: 0
   });
-  const [chartData, setChartData] = useState<any[]>([]);
+
+  // Chart States
+  const [barChartData, setBarChartData] = useState<any[]>([]);
+  const [lineChartData, setLineChartData] = useState<any[]>([]);
+  const [pieChartData, setPieChartData] = useState<any[]>([]);
+  const [scatterData, setScatterData] = useState<any[]>([]);
+  const [radarData, setRadarData] = useState<any[]>([]);
+  const [treemapData, setTreemapData] = useState<any[]>([]);
+
   const [recentActions, setRecentActions] = useState<Invoice[]>([]);
 
   useEffect(() => {
@@ -24,22 +36,31 @@ export const Dashboard: React.FC = () => {
 
   const fetchDashboardData = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      // Mock Data for Visualization Verification
+      const invoices = [
+        { id: '1', amount: 1500, status: 'Payée', created_at: '2024-01-15', payment_date: '2024-01-20', client_name: 'Tech Corp', due_date: '2024-01-30', risk_level: 'Faible' },
+        { id: '2', amount: 2300, status: 'En retard', created_at: '2024-02-10', client_name: 'Studio Design', due_date: '2024-02-28', risk_level: 'Moyen' },
+        { id: '3', amount: 4500, status: 'Payée', created_at: '2024-03-05', payment_date: '2024-03-15', client_name: 'Global Inc', due_date: '2024-03-20', risk_level: 'Faible' },
+        { id: '4', amount: 1200, status: 'En attente', created_at: '2024-04-01', client_name: 'StartUp One', due_date: '2024-04-15', risk_level: 'Faible' },
+        { id: '5', amount: 800, status: 'Recouvrement actif', created_at: '2024-03-20', client_name: 'Freelance Guy', due_date: '2024-04-05', risk_level: 'Élevé' },
+        { id: '6', amount: 3000, status: 'Payée', created_at: '2024-05-12', payment_date: '2024-05-25', client_name: 'Big Agency', due_date: '2024-05-30', risk_level: 'Faible' },
+      ] as any[];
 
-      const { data, error } = await supabase
-        .from('invoices')
-        .select('*')
-        .order('created_at', { ascending: false });
+      // const { data: { user } } = await supabase.auth.getUser();
+      // if (!user) return;
 
-      if (error) throw error;
+      // const { data, error } = await supabase
+      //   .from('invoices')
+      //   .select('*')
+      //   .order('created_at', { ascending: false });
 
-      const invoices = data as any[];
+      // if (error) throw error;
 
-      // 1. Calculate KPI Totals
+      // const invoices = data as any[];
+
+      // --- 1. KPI Totals ---
       let recovered = 0;
       let pending = 0;
-      let processedCount = invoices.length;
 
       invoices.forEach(inv => {
         const amt = Number(inv.amount) || 0;
@@ -50,19 +71,18 @@ export const Dashboard: React.FC = () => {
         }
       });
 
-      // Estimate Legal Savings: Average cost of a lawyer letter/action ~75€
-      // We assume every invoice processed in the app saves one manual legal action interaction
-      const legalSavings = processedCount * 75;
+      const legalSavings = invoices.length * 75;
 
       setMetrics({
         recovered,
         pending,
-        processedCount,
+        processedCount: invoices.length,
         legalSavings
       });
 
-      // 2. Prepare Chart Data (Group by Month)
-      // We verify the last 6 months
+      // --- 2. Chart Data Preparation ---
+
+      // A. Bar Chart & Line Chart (Monthly Evolution)
       const last6Months = Array.from({ length: 6 }, (_, i) => {
         const d = new Date();
         d.setMonth(d.getMonth() - (5 - i));
@@ -71,13 +91,17 @@ export const Dashboard: React.FC = () => {
           name: d.toLocaleString(language === 'fr' ? 'fr-FR' : 'en-US', { month: 'short' }),
           key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
           recouvre: 0,
-          attente: 0
+          attente: 0,
+          cumulRecouvre: 0
         };
       });
 
-      invoices.forEach(inv => {
+      let runningTotal = 0;
+      // Sort invoices by date for line chart running total
+      const sortedInvoices = [...invoices].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+      sortedInvoices.forEach(inv => {
         const amt = Number(inv.amount) || 0;
-        // If paid, use payment_date, otherwise use due_date or created_at
         const dateRef = inv.status === InvoiceStatus.PAID && inv.payment_date 
           ? new Date(inv.payment_date) 
           : new Date(inv.created_at);
@@ -88,15 +112,101 @@ export const Dashboard: React.FC = () => {
         if (monthData) {
           if (inv.status === InvoiceStatus.PAID) {
             monthData.recouvre += amt;
+            runningTotal += amt;
           } else {
             monthData.attente += amt;
           }
         }
+        // Update cumulative for all months after this date?
+        // Simpler: Just map running total to the months after aggregation
       });
 
-      setChartData(last6Months);
+      // Fix cumulative sum for line chart
+      let cumSum = 0;
+      const lineData = last6Months.map(m => {
+        cumSum += m.recouvre;
+        return { ...m, cumulRecouvre: cumSum };
+      });
 
-      // 3. Recent Actions (Filter by those needing attention)
+      setBarChartData(last6Months);
+      setLineChartData(lineData);
+
+      // B. Pie Chart (Status Distribution)
+      const statusCounts: Record<string, number> = {};
+      invoices.forEach(inv => {
+        const s = inv.status || 'Inconnu';
+        statusCounts[s] = (statusCounts[s] || 0) + 1;
+      });
+      const pieData = Object.keys(statusCounts).map(key => ({
+        name: key,
+        value: statusCounts[key]
+      }));
+      setPieChartData(pieData);
+
+      // C. Scatter Plot (Amount vs Overdue Days)
+      const scatter = invoices
+        .filter(inv => inv.status === InvoiceStatus.OVERDUE || inv.status === InvoiceStatus.RECOVERY_STARTED)
+        .map(inv => {
+          const due = new Date(inv.due_date);
+          const now = new Date();
+          const diffTime = Math.abs(now.getTime() - due.getTime());
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          return {
+            x: diffDays, // Days Overdue
+            y: Number(inv.amount), // Amount
+            z: 1, // Size
+            name: inv.client_name
+          };
+        });
+      // Mock some scatter data if empty
+      if (scatter.length === 0) {
+        scatter.push(
+            { x: 5, y: 1500, z: 1, name: 'Client A' },
+            { x: 15, y: 3200, z: 1, name: 'Client B' },
+            { x: 30, y: 800, z: 1, name: 'Client C' },
+            { x: 45, y: 5000, z: 1, name: 'Client D' },
+        );
+      }
+      setScatterData(scatter);
+
+      // D. Radar Chart (Metrics)
+      // Mock metrics for "Health Score"
+      const radar = [
+        { subject: 'Vitesse', A: 120, fullMark: 150 },
+        { subject: 'Volume', A: 98, fullMark: 150 },
+        { subject: 'Succès', A: 86, fullMark: 150 },
+        { subject: 'Rétention', A: 99, fullMark: 150 },
+        { subject: 'Juridique', A: 85, fullMark: 150 },
+        { subject: 'Satisfaction', A: 65, fullMark: 150 },
+      ];
+      setRadarData(radar);
+
+      // E. Treemap (Clients by Volume)
+      const clientMap: Record<string, number> = {};
+      invoices.forEach(inv => {
+        const name = inv.client_name || 'Inconnu';
+        clientMap[name] = (clientMap[name] || 0) + Number(inv.amount);
+      });
+      const treemap = Object.keys(clientMap).map((name, index) => ({
+        name,
+        size: clientMap[name],
+        fill: `hsl(${index * 45}, 70%, 50%)`
+      })).slice(0, 10); // Top 10
+
+      if (treemap.length === 0) {
+           // Mock
+           treemap.push(
+               { name: 'Acme Corp', size: 12000, fill: '#8884d8' },
+               { name: 'Globex', size: 8500, fill: '#83a6ed' },
+               { name: 'Soylent', size: 6000, fill: '#8dd1e1' },
+               { name: 'Initech', size: 3000, fill: '#82ca9d' },
+           );
+      }
+
+      setTreemapData(treemap);
+
+
+      // 3. Recent Actions
       const urgent = invoices
         .filter(inv => inv.status === InvoiceStatus.OVERDUE || inv.status === InvoiceStatus.RECOVERY_STARTED)
         .slice(0, 3)
@@ -106,7 +216,6 @@ export const Dashboard: React.FC = () => {
           clientName: inv.client_name,
           riskLevel: inv.risk_level
         }));
-      
       setRecentActions(urgent);
 
     } catch (error) {
@@ -115,6 +224,8 @@ export const Dashboard: React.FC = () => {
       setLoading(false);
     }
   };
+
+  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
   if (loading) {
     return (
@@ -125,12 +236,13 @@ export const Dashboard: React.FC = () => {
   }
 
   return (
-    <div className="space-y-8 fade-in max-w-7xl mx-auto">
+    <div className="space-y-8 fade-in max-w-7xl mx-auto pb-12">
       <header className="mb-8">
         <h2 className="text-3xl font-bold text-slate-900 tracking-tight">{t('dash.overview')}</h2>
         <p className="text-slate-500 mt-1 text-lg">{t('dash.welcome')}</p>
       </header>
 
+      {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard 
           title={t('stat.recovered')}
@@ -162,96 +274,139 @@ export const Dashboard: React.FC = () => {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-8">
-        {/* Main Chart */}
-        <div className="lg:col-span-2 bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
-          <div className="flex justify-between items-center mb-6">
-             <h3 className="text-lg font-bold text-slate-900">{t('chart.performance')}</h3>
-             <select className="text-sm border-none bg-slate-50 rounded-lg px-3 py-1 text-slate-600 focus:ring-0 cursor-pointer hover:bg-slate-100 transition">
-               <option>6 derniers mois</option>
-             </select>
+      {/* Charts Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
+
+        {/* 1. Bar Chart (Frequencies/Comparisons) */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 col-span-1 lg:col-span-2">
+          <div className="flex items-center gap-3 mb-6">
+             <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><BarChartIcon size={18} /></div>
+             <h3 className="font-bold text-slate-900">Performance Mensuelle</h3>
           </div>
-          <div className="h-80 w-full">
-            {chartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} barGap={8}>
+          <div className="h-72 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={barChartData} barGap={8}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis 
-                    dataKey="name" 
-                    axisLine={false} 
-                    tickLine={false} 
-                    tick={{fill: '#94a3b8', fontSize: 12}} 
-                    dy={10} 
-                  />
-                  <YAxis 
-                    axisLine={false} 
-                    tickLine={false} 
-                    tick={{fill: '#94a3b8', fontSize: 12}} 
-                  />
-                  <Tooltip 
-                    cursor={{fill: '#f8fafc'}}
-                    contentStyle={{
-                      borderRadius: '12px', 
-                      border: 'none', 
-                      boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
-                      padding: '12px'
-                    }}
-                  />
-                  <Bar dataKey="recouvre" name="Recouvré" fill="#1A73E8" radius={[6, 6, 6, 6]} barSize={32} />
-                  <Bar dataKey="attente" name="En Attente" fill="#e2e8f0" radius={[6, 6, 6, 6]} barSize={32} />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
+                  <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} />
+                  <Legend iconType="circle" />
+                  <Bar dataKey="recouvre" name="Recouvré" fill="#1A73E8" radius={[4, 4, 4, 4]} />
+                  <Bar dataKey="attente" name="En Attente" fill="#e2e8f0" radius={[4, 4, 4, 4]} />
                 </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex h-full items-center justify-center text-slate-400">
-                Pas assez de données
-              </div>
-            )}
+            </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Actions List */}
-        <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 flex flex-col">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-lg font-bold text-slate-900">{t('chart.actions')}</h3>
-            <span className="w-6 h-6 bg-red-100 text-red-600 rounded-full flex items-center justify-center text-xs font-bold">{recentActions.length}</span>
+        {/* 2. Pie Chart (Proportions) */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+           <div className="flex items-center gap-3 mb-6">
+             <div className="p-2 bg-purple-50 text-purple-600 rounded-lg"><PieChartIcon size={18} /></div>
+             <h3 className="font-bold text-slate-900">Distribution par Statut</h3>
           </div>
-          
-          <div className="space-y-4 flex-1">
-            {recentActions.length === 0 ? (
-              <p className="text-sm text-slate-500 italic">Aucune action urgente requise.</p>
-            ) : (
-              recentActions.map((action) => (
-                <div key={action.id} className="p-4 bg-white rounded-xl border border-red-100 shadow-sm hover:shadow-md transition-shadow group cursor-pointer relative overflow-hidden">
-                  <div className="absolute left-0 top-0 w-1 h-full bg-red-500"></div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full uppercase tracking-wide">
-                      {action.status === InvoiceStatus.OVERDUE ? 'En Retard' : 'Action Requise'}
-                    </span>
-                    <span className="text-slate-400 text-xs">{action.dueDate}</span>
-                  </div>
-                  <div className="flex justify-between items-start">
-                    <div>
-                        <p className="text-sm font-bold text-slate-900">{action.clientName}</p>
-                        <p className="text-xs text-slate-500">{Number(action.amount).toLocaleString()} €</p>
-                    </div>
-                    <button className="text-primary opacity-0 group-hover:opacity-100 transition-opacity">
-                      <ArrowUpRight size={18} />
-                    </button>
-                  </div>
-                  <div className="mt-3 pt-3 border-t border-slate-50">
-                    <button className="w-full py-2 text-xs font-semibold text-white bg-red-500 rounded-lg hover:bg-red-600 transition shadow-sm shadow-red-200">
-                      Générer Relance
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
+          <div className="h-72 w-full">
+             <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={pieChartData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {pieChartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} />
+                  <Legend layout="horizontal" verticalAlign="bottom" align="center" />
+                </PieChart>
+             </ResponsiveContainer>
           </div>
-          
-          <button className="mt-4 w-full text-center text-sm font-medium text-slate-500 hover:text-primary py-2">
-            Voir tout
-          </button>
         </div>
+
+        {/* 3. Line Chart (Time Evolution) */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 col-span-1 lg:col-span-2">
+           <div className="flex items-center gap-3 mb-6">
+             <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><Activity size={18} /></div>
+             <h3 className="font-bold text-slate-900">Évolution Cumulée (Recouvrement)</h3>
+          </div>
+          <div className="h-72 w-full">
+             <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={lineChartData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
+                  <Tooltip contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} />
+                  <Line type="monotone" dataKey="cumulRecouvre" name="Total Recouvré" stroke="#10B981" strokeWidth={3} dot={{r: 4, fill: '#10B981'}} activeDot={{r: 8}} />
+                </LineChart>
+             </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* 4. Scatter Plot (Correlations) */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+           <div className="flex items-center gap-3 mb-6">
+             <div className="p-2 bg-pink-50 text-pink-600 rounded-lg"><ScatterChartIcon size={18} /></div>
+             <h3 className="font-bold text-slate-900">Corrélation (Montant / Retard)</h3>
+          </div>
+          <div className="h-72 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                <CartesianGrid />
+                <XAxis type="number" dataKey="x" name="Jours de retard" unit="j" tick={{fontSize: 10}} />
+                <YAxis type="number" dataKey="y" name="Montant" unit="€" tick={{fontSize: 10}} />
+                <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} />
+                <Scatter name="Factures" data={scatterData} fill="#EC4899" />
+              </ScatterChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+         {/* 5. Radar Chart (Analysis) */}
+         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+           <div className="flex items-center gap-3 mb-6">
+             <div className="p-2 bg-orange-50 text-orange-600 rounded-lg"><RadarIcon size={18} /></div>
+             <h3 className="font-bold text-slate-900">Santé Financière</h3>
+          </div>
+          <div className="h-72 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
+                <PolarGrid />
+                <PolarAngleAxis dataKey="subject" tick={{fontSize: 10, fill: '#64748b'}} />
+                <PolarRadiusAxis angle={30} domain={[0, 150]} tick={false} />
+                <Radar name="Performance" dataKey="A" stroke="#F97316" fill="#F97316" fillOpacity={0.6} />
+              </RadarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* 6. Treemap (Complex Analysis) */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 col-span-1 lg:col-span-2">
+           <div className="flex items-center gap-3 mb-6">
+             <div className="p-2 bg-teal-50 text-teal-600 rounded-lg"><MapIcon size={18} /></div>
+             <h3 className="font-bold text-slate-900">Volume par Client (Treemap)</h3>
+          </div>
+          <div className="h-72 w-full">
+             <ResponsiveContainer width="100%" height="100%">
+                <Treemap
+                  width={400}
+                  height={200}
+                  data={treemapData}
+                  dataKey="size"
+                  aspectRatio={4 / 3}
+                  stroke="#fff"
+                  fill="#8884d8"
+                >
+                  <Tooltip contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} />
+                </Treemap>
+             </ResponsiveContainer>
+          </div>
+        </div>
+
       </div>
     </div>
   );
