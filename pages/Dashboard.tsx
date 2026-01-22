@@ -6,7 +6,11 @@ import { useLanguage } from '../utils/i18n';
 import { supabase } from '../services/supabaseClient';
 import { Invoice, InvoiceStatus } from '../types';
 
-export const Dashboard: React.FC = () => {
+interface DashboardProps {
+  userId: string;
+}
+
+export const Dashboard: React.FC<DashboardProps> = ({ userId }) => {
   const { t, language } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState({
@@ -20,12 +24,11 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     fetchDashboardData();
-  }, []);
+  }, [userId]);
 
   const fetchDashboardData = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!userId) return;
 
       const { data, error } = await supabase
         .from('invoices')
