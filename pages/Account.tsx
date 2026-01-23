@@ -42,27 +42,30 @@ export const AccountPage: React.FC<AccountPageProps> = ({ userProfile, onUpdateP
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // 1. Fetch Payment Methods
-    const { data: pmData } = await supabase
-      .from('payment_methods')
-      .select('*')
-      .order('is_default', { ascending: false });
+    // Parallel Data Fetching
+    const [
+      { data: pmData },
+      { data: billData },
+      { data: logData }
+    ] = await Promise.all([
+      supabase
+        .from('payment_methods')
+        .select('*')
+        .order('is_default', { ascending: false }),
+      supabase
+        .from('billing_history')
+        .select('*')
+        .order('date', { ascending: false })
+        .limit(5),
+      supabase
+        .from('activity_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(20)
+    ]);
+
     if (pmData) setPaymentMethods(pmData as PaymentMethod[]);
-
-    // 2. Fetch Billing History
-    const { data: billData } = await supabase
-      .from('billing_history')
-      .select('*')
-      .order('date', { ascending: false })
-      .limit(5);
     if (billData) setBillingHistory(billData as unknown as BillingRecord[]);
-
-    // 3. Fetch Activity Logs
-    const { data: logData } = await supabase
-      .from('activity_logs')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(20);
     
     // Manual mapping for compatibility if column names differ slightly or just casting
     if (logData) {
