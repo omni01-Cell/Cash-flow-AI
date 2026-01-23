@@ -1,8 +1,11 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Invoice, DunningDraft } from '../types';
 
-// Initialize the Gemini API client
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Helper to retrieve the API key (from localStorage or environment)
+const getClient = () => {
+  const apiKey = localStorage.getItem('gemini_api_key') || process.env.API_KEY;
+  return new GoogleGenAI({ apiKey: apiKey || '' });
+};
 
 const modelId = 'gemini-2.5-flash';
 
@@ -11,6 +14,7 @@ const modelId = 'gemini-2.5-flash';
  */
 export const analyzeInvoiceText = async (text: string): Promise<Partial<Invoice>> => {
   try {
+    const ai = getClient();
     const response = await ai.models.generateContent({
       model: modelId,
       contents: `You are an expert accountant AI. Extract the invoice details from the following text. 
@@ -35,6 +39,7 @@ export const analyzeInvoiceText = async (text: string): Promise<Partial<Invoice>
  */
 export const analyzeInvoiceFile = async (base64Data: string, mimeType: string): Promise<Partial<Invoice>> => {
   try {
+    const ai = getClient();
     const response = await ai.models.generateContent({
       model: modelId,
       contents: [
@@ -109,6 +114,7 @@ export const generateDunningSequence = async (clientName: string, amount: number
       Return strictly valid JSON.
     `;
 
+    const ai = getClient();
     const response = await ai.models.generateContent({
       model: modelId,
       contents: prompt,
@@ -162,6 +168,7 @@ export const generateAdministrativeLetter = async (type: 'fine' | 'visa' | 'revi
     
     Response (Body only):`;
 
+    const ai = getClient();
     const response = await ai.models.generateContent({
       model: modelId,
       contents: prompt,
@@ -177,20 +184,26 @@ export const generateAdministrativeLetter = async (type: 'fine' | 'visa' | 'revi
  * Creates a chat session for the support assistant.
  */
 export const createAssistantChat = () => {
-  return ai.chats.create({
-    model: 'gemini-3-pro-preview',
-    config: {
-      systemInstruction: `You are the friendly and professional AI Assistant for "Cash-flow AI", a SaaS platform for freelancers and small businesses.
-      
-      Your goal is to help users understand and use the application.
-      
-      Application Features to explain if asked:
-      1. Dashboard: Provides a real-time financial overview.
-      2. Recovery (Recouvrement): Users upload invoice files (PDF/Image) or text. AI analyzes them and generates reminders.
-      3. Bureaucracy Killer (Admin Tools): Generate administrative letters.
-      4. Compliance: We are a software provider, not a bank.
-      
-      Tone: Professional, helpful, concise.`,
-    }
-  });
+  try {
+    const ai = getClient();
+    return ai.chats.create({
+      model: 'gemini-3-pro-preview',
+      config: {
+        systemInstruction: `You are the friendly and professional AI Assistant for "Cash-flow AI", a SaaS platform for freelancers and small businesses.
+
+        Your goal is to help users understand and use the application.
+
+        Application Features to explain if asked:
+        1. Dashboard: Provides a real-time financial overview.
+        2. Recovery (Recouvrement): Users upload invoice files (PDF/Image) or text. AI analyzes them and generates reminders.
+        3. Bureaucracy Killer (Admin Tools): Generate administrative letters.
+        4. Compliance: We are a software provider, not a bank.
+
+        Tone: Professional, helpful, concise.`,
+      }
+    });
+  } catch (error) {
+    console.warn("Gemini Chat initialization failed (likely missing API Key):", error);
+    return null;
+  }
 };

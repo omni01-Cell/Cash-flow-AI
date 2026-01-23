@@ -96,11 +96,40 @@ export const AccountPage: React.FC<AccountPageProps> = ({ userProfile, onUpdateP
     setIsEditing(false);
   };
 
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
+
+      // Optimistic update
       const imageUrl = URL.createObjectURL(file);
       setTempAvatar(imageUrl);
+
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+
+        // Upload to 'avatars' bucket
+        const { error: uploadError } = await supabase.storage
+          .from('avatars')
+          .upload(fileName, file, { upsert: true });
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('avatars')
+          .getPublicUrl(fileName);
+
+        // Update tempAvatar with the real URL
+        setTempAvatar(publicUrl);
+
+      } catch (error) {
+        console.error("Error uploading avatar:", error);
+        alert("Erreur lors du téléchargement de l'image.");
+        // Revert to original if needed or just keep local blob
+      }
     }
   };
 
