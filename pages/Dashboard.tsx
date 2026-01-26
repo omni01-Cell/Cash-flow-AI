@@ -10,7 +10,11 @@ import { useLanguage } from '../utils/i18n';
 import { supabase } from '../services/supabaseClient';
 import { Invoice, InvoiceStatus } from '../types';
 
-export const Dashboard: React.FC = () => {
+interface DashboardProps {
+  userId: string;
+}
+
+export const Dashboard: React.FC<DashboardProps> = ({ userId }) => {
   const { t, language } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState({
@@ -31,8 +35,10 @@ export const Dashboard: React.FC = () => {
   const [recentActions, setRecentActions] = useState<Invoice[]>([]);
 
   useEffect(() => {
-    fetchDashboardData();
-  }, []);
+    if (userId) {
+      fetchDashboardData();
+    }
+  }, [userId]);
 
   const fetchDashboardData = async () => {
     try {
@@ -46,8 +52,8 @@ export const Dashboard: React.FC = () => {
         { id: '6', amount: 3000, status: 'Payée', created_at: '2024-05-12', payment_date: '2024-05-25', client_name: 'Big Agency', due_date: '2024-05-30', risk_level: 'Faible' },
       ] as any[];
 
-      // const { data: { user } } = await supabase.auth.getUser();
-      // if (!user) return;
+      // Optimization: using prop instead of fetching user
+      if (!userId) return;
 
       // const { data, error } = await supabase
       //   .from('invoices')
