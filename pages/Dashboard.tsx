@@ -10,7 +10,7 @@ import { useLanguage } from '../utils/i18n';
 import { supabase } from '../services/supabaseClient';
 import { Invoice, InvoiceStatus } from '../types';
 
-export const Dashboard: React.FC = () => {
+export const Dashboard: React.FC<{ userId: string }> = ({ userId }) => {
   const { t, language } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState({
@@ -32,7 +32,7 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     fetchDashboardData();
-  }, []);
+  }, [userId]);
 
   const fetchDashboardData = async () => {
     try {
@@ -45,9 +45,6 @@ export const Dashboard: React.FC = () => {
         { id: '5', amount: 800, status: 'Recouvrement actif', created_at: '2024-03-20', client_name: 'Freelance Guy', due_date: '2024-04-05', risk_level: 'Élevé' },
         { id: '6', amount: 3000, status: 'Payée', created_at: '2024-05-12', payment_date: '2024-05-25', client_name: 'Big Agency', due_date: '2024-05-30', risk_level: 'Faible' },
       ] as any[];
-
-      // const { data: { user } } = await supabase.auth.getUser();
-      // if (!user) return;
 
       // const { data, error } = await supabase
       //   .from('invoices')
