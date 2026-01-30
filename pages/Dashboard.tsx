@@ -10,7 +10,7 @@ import { useLanguage } from '../utils/i18n';
 import { supabase } from '../services/supabaseClient';
 import { Invoice, InvoiceStatus } from '../types';
 
-export const Dashboard: React.FC = () => {
+export const Dashboard: React.FC<{ userId?: string }> = ({ userId }) => {
   const { t, language } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState({
@@ -32,12 +32,12 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     fetchDashboardData();
-  }, []);
+  }, [userId]);
 
   const fetchDashboardData = async () => {
     try {
-      // Mock Data for Visualization Verification
-      const invoices = [
+      // Mock Data for Visualization Verification - Default fallback
+      let invoices = [
         { id: '1', amount: 1500, status: 'Payée', created_at: '2024-01-15', payment_date: '2024-01-20', client_name: 'Tech Corp', due_date: '2024-01-30', risk_level: 'Faible' },
         { id: '2', amount: 2300, status: 'En retard', created_at: '2024-02-10', client_name: 'Studio Design', due_date: '2024-02-28', risk_level: 'Moyen' },
         { id: '3', amount: 4500, status: 'Payée', created_at: '2024-03-05', payment_date: '2024-03-15', client_name: 'Global Inc', due_date: '2024-03-20', risk_level: 'Faible' },
@@ -46,17 +46,17 @@ export const Dashboard: React.FC = () => {
         { id: '6', amount: 3000, status: 'Payée', created_at: '2024-05-12', payment_date: '2024-05-25', client_name: 'Big Agency', due_date: '2024-05-30', risk_level: 'Faible' },
       ] as any[];
 
-      // const { data: { user } } = await supabase.auth.getUser();
-      // if (!user) return;
+      // Optimize: Use real data if available, provided by prop (avoiding extra getUser call)
+      if (userId) {
+        const { data, error } = await supabase
+          .from('invoices')
+          .select('*')
+          .order('created_at', { ascending: false });
 
-      // const { data, error } = await supabase
-      //   .from('invoices')
-      //   .select('*')
-      //   .order('created_at', { ascending: false });
-
-      // if (error) throw error;
-
-      // const invoices = data as any[];
+        if (!error && data && data.length > 0) {
+          invoices = data;
+        }
+      }
 
       // --- 1. KPI Totals ---
       let recovered = 0;
