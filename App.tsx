@@ -124,7 +124,7 @@ const AppContent: React.FC = () => {
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
-        return <Dashboard />;
+        return <Dashboard userId={session?.user?.id} />;
       case 'invoices':
         return <Recovery userId={session.user.id} />;
       case 'admin':
@@ -136,7 +136,7 @@ const AppContent: React.FC = () => {
       case 'account':
         return <AccountPage userProfile={userProfile} onUpdateProfile={updateProfile} />;
       default:
-        return <Dashboard />;
+        return <Dashboard userId={session?.user?.id} />;
     }
   };
 
