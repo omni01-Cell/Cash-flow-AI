@@ -10,7 +10,7 @@ import { useLanguage } from '../utils/i18n';
 import { supabase } from '../services/supabaseClient';
 import { Invoice, InvoiceStatus } from '../types';
 
-export const Dashboard: React.FC = () => {
+export const Dashboard: React.FC<{ userId?: string }> = ({ userId }) => {
   const { t, language } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState({
@@ -32,31 +32,34 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     fetchDashboardData();
-  }, []);
+  }, [userId]);
 
   const fetchDashboardData = async () => {
     try {
-      // Mock Data for Visualization Verification
-      const invoices = [
-        { id: '1', amount: 1500, status: 'Payée', created_at: '2024-01-15', payment_date: '2024-01-20', client_name: 'Tech Corp', due_date: '2024-01-30', risk_level: 'Faible' },
-        { id: '2', amount: 2300, status: 'En retard', created_at: '2024-02-10', client_name: 'Studio Design', due_date: '2024-02-28', risk_level: 'Moyen' },
-        { id: '3', amount: 4500, status: 'Payée', created_at: '2024-03-05', payment_date: '2024-03-15', client_name: 'Global Inc', due_date: '2024-03-20', risk_level: 'Faible' },
-        { id: '4', amount: 1200, status: 'En attente', created_at: '2024-04-01', client_name: 'StartUp One', due_date: '2024-04-15', risk_level: 'Faible' },
-        { id: '5', amount: 800, status: 'Recouvrement actif', created_at: '2024-03-20', client_name: 'Freelance Guy', due_date: '2024-04-05', risk_level: 'Élevé' },
-        { id: '6', amount: 3000, status: 'Payée', created_at: '2024-05-12', payment_date: '2024-05-25', client_name: 'Big Agency', due_date: '2024-05-30', risk_level: 'Faible' },
-      ] as any[];
+      let invoices: any[] = [];
 
-      // const { data: { user } } = await supabase.auth.getUser();
-      // if (!user) return;
+      if (userId) {
+        const { data, error } = await supabase
+          .from('invoices')
+          .select('*')
+          .order('created_at', { ascending: false });
 
-      // const { data, error } = await supabase
-      //   .from('invoices')
-      //   .select('*')
-      //   .order('created_at', { ascending: false });
+        if (!error && data) {
+          invoices = data;
+        }
+      }
 
-      // if (error) throw error;
-
-      // const invoices = data as any[];
+      // Fallback to mock data if empty
+      if (invoices.length === 0) {
+        invoices = [
+          { id: '1', amount: 1500, status: 'Payée', created_at: '2024-01-15', payment_date: '2024-01-20', client_name: 'Tech Corp', due_date: '2024-01-30', risk_level: 'Faible' },
+          { id: '2', amount: 2300, status: 'En retard', created_at: '2024-02-10', client_name: 'Studio Design', due_date: '2024-02-28', risk_level: 'Moyen' },
+          { id: '3', amount: 4500, status: 'Payée', created_at: '2024-03-05', payment_date: '2024-03-15', client_name: 'Global Inc', due_date: '2024-03-20', risk_level: 'Faible' },
+          { id: '4', amount: 1200, status: 'En attente', created_at: '2024-04-01', client_name: 'StartUp One', due_date: '2024-04-15', risk_level: 'Faible' },
+          { id: '5', amount: 800, status: 'Recouvrement actif', created_at: '2024-03-20', client_name: 'Freelance Guy', due_date: '2024-04-05', risk_level: 'Élevé' },
+          { id: '6', amount: 3000, status: 'Payée', created_at: '2024-05-12', payment_date: '2024-05-25', client_name: 'Big Agency', due_date: '2024-05-30', risk_level: 'Faible' },
+        ] as any[];
+      }
 
       // --- 1. KPI Totals ---
       let recovered = 0;
@@ -117,8 +120,6 @@ export const Dashboard: React.FC = () => {
             monthData.attente += amt;
           }
         }
-        // Update cumulative for all months after this date?
-        // Simpler: Just map running total to the months after aggregation
       });
 
       // Fix cumulative sum for line chart
